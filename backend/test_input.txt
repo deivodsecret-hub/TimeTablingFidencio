@@ -1,0 +1,7 @@
+TEACHER 1 Mr._Smith
+TEACHER 2 Mrs._Jones
+ROOM 101 Room_A 30
+ROOM 102 Room_B 20
+COURSE 1 Math 1 30 2
+COURSE 2 English 2 20 1
+END
