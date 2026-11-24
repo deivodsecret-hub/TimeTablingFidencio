@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { storage } from '../utils/storage';
 import { INITIAL_COURSES, INITIAL_TEACHERS } from '../utils/initialData';
 import { Plus, Trash2, Edit2, X, RefreshCw } from 'lucide-react';
@@ -7,9 +7,9 @@ import Swal from 'sweetalert2';
 
 const Data = () => {
     const [activeTab, setActiveTab] = useState('teachers');
-    const [teachers, setTeachers] = useState([]);
-    const [courses, setCourses] = useState([]);
-    const [students, setStudents] = useState({});
+    const [teachers, setTeachers] = useState(() => storage.getTeachers());
+    const [courses, setCourses] = useState(() => storage.getCourses());
+    const [students, setStudents] = useState(() => storage.getStudents());
 
     // Cuatrimestres disponibles
     const cuatrimestres = Array.from({ length: 10 }, (_, i) => i + 1);
@@ -27,27 +27,11 @@ const Data = () => {
     const [showCourseModal, setShowCourseModal] = useState(false);
     const [showAvailability, setShowAvailability] = useState(false);
 
-    // Subject input state
-    const [subjectInput, setSubjectInput] = useState('');
-
-    // Ref for subject input to maintain focus
-    const subjectInputRef = useRef(null);
-
     // Función para generar el siguiente ID automáticamente
     const getNextId = (items) => {
         if (items.length === 0) return 1;
         const maxId = Math.max(...items.map(item => item.id));
         return maxId + 1;
-    };
-
-    useEffect(() => {
-        refreshData();
-    }, []);
-
-    const refreshData = () => {
-        setTeachers(storage.getTeachers());
-        setCourses(storage.getCourses());
-        setStudents(storage.getStudents());
     };
 
     // Guardar cambios en alumnos por cuatrimestre
@@ -86,46 +70,7 @@ const Data = () => {
         return true;
     };
 
-    const validateRoom = (room, isEdit = false) => {
-        // Required fields
-        if (!room.name || !room.capacity) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Campos Requeridos',
-                text: 'El nombre y capacidad son obligatorios'
-            });
-            return false;
-        }
-
-        // Validate capacity is positive
-        const capacity = parseInt(room.capacity);
-        if (capacity <= 0 || isNaN(capacity)) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Capacidad Inválida',
-                text: 'La capacidad debe ser un número positivo'
-            });
-            return false;
-        }
-
-        // Check duplicate name (case-insensitive)
-        const duplicateName = rooms.find(r =>
-            r.name.toLowerCase().trim() === room.name.toLowerCase().trim() &&
-            (!isEdit || r.id !== room.id)
-        );
-        if (duplicateName) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Nombre Duplicado',
-                text: `Ya existe un aula con el nombre "${room.name}"`
-            });
-            return false;
-        }
-
-        return true;
-    };
-
-    const validateCourse = (course, isEdit = false) => {
+    const validateCourse = (course) => {
         // Required fields
         if (!course.name || !course.cuatrimestre || !course.weekly_sessions) {
             Swal.fire({
@@ -232,17 +177,6 @@ const Data = () => {
         });
     };
 
-    // Handle teacher selection in course form
-    const handleTeacherSelect = (teacherId, isEditing = false) => {
-        const teacher = teachers.find(t => t.id === parseInt(teacherId));
-        if (isEditing && editingCourse) {
-            setEditingCourse({ ...editingCourse, teacher_id: teacherId });
-        } else {
-            setNewCourse({ ...newCourse, teacher_id: teacherId });
-        }
-        // Teacher data is now available through the teacher object if needed
-    };
-
     const handleDelete = async (type, id) => {
         let itemName = '';
         let itemType = '';
@@ -251,10 +185,6 @@ const Data = () => {
             const teacher = teachers.find(t => t.id === id);
             itemName = teacher?.name || 'este profesor';
             itemType = 'Profesor';
-        } else if (type === 'rooms') {
-            const room = rooms.find(r => r.id === id);
-            itemName = room?.name || 'esta aula';
-            itemType = 'Aula';
         } else if (type === 'courses') {
             const course = courses.find(c => c.id === id);
             itemName = course?.name || 'esta materia';
@@ -290,7 +220,6 @@ const Data = () => {
 
             storage.setCourses(updatedCourses);
             setCourses(updatedCourses);
-        } else if (type === 'rooms') {
         } else if (type === 'courses') {
             const updated = courses.filter(c => c.id !== id);
             storage.setCourses(updated);
@@ -373,10 +302,9 @@ const Data = () => {
 
         const updated = courses.map(c => c.id === editingCourse.id ? {
             ...editingCourse,
-            teacher_id: parseInt(editingCourse.teacher_id),
-            room_id: parseInt(editingCourse.room_id),
-            cuatrimestre: parseInt(editingCourse.cuatrimestre),
-            weekly_sessions: parseInt(editingCourse.weekly_sessions)
+            teacher_id: editingCourse.teacher_id ? parseInt(editingCourse.teacher_id, 10) : null,
+            cuatrimestre: parseInt(editingCourse.cuatrimestre, 10),
+            weekly_sessions: parseInt(editingCourse.weekly_sessions, 10)
         } : c);
         storage.setCourses(updated);
         setCourses(updated);
@@ -397,7 +325,6 @@ const Data = () => {
         setEditingCourse(null);
         setShowTeacherModal(false);
         setShowCourseModal(false);
-        setSubjectInput('');
     };
 
     const handleResetCourses = async () => {

@@ -28,20 +28,23 @@ import {
     exportIAPDF,
 } from '../utils/iaStorage';
 
-const StatCard = ({ title, value, subtitle, icon: Icon, color }) => (
-    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-        <div className="flex justify-between items-start">
-            <div>
-                <p className="text-gray-500 text-sm font-medium">{title}</p>
-                <h3 className="text-2xl font-bold mt-1 text-gray-800">{value}</h3>
-                <p className="text-gray-400 text-xs mt-1">{subtitle}</p>
-            </div>
-            <div className={`p-3 rounded-lg ${color}`}>
-                <Icon size={22} className="text-white" />
+const StatCard = ({ title, value, subtitle, icon, color }) => {
+    const IconComp = icon;
+    return (
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+            <div className="flex justify-between items-start">
+                <div>
+                    <p className="text-gray-500 text-sm font-medium">{title}</p>
+                    <h3 className="text-2xl font-bold mt-1 text-gray-800">{value}</h3>
+                    <p className="text-gray-400 text-xs mt-1">{subtitle}</p>
+                </div>
+                <div className={`p-3 rounded-lg ${color}`}>
+                    <IconComp size={22} className="text-white" />
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 const IAOptimizer = () => {
     const [sourceKey, setSourceKey] = useState('ORIGINAL'); // ORIGINAL | I1 | I2 | I3 | I4 | EXCEL
@@ -69,34 +72,36 @@ const IAOptimizer = () => {
         if (saved) {
             setInstance(saved);
             setSourceKey(saved.id || 'ORIGINAL');
+            if (saved.teachers?.length > 0) {
+                setChangeTeacherId(String(saved.change_teacher_id || saved.teachers[0].id));
+            }
+            if (saved.rooms?.length > 0) {
+                setSelectedEntity(String(saved.rooms[0].id));
+            }
         } else {
-            loadSource('ORIGINAL');
+            const origInst = buildInstanceFromOriginalStorage();
+            setInstance(origInst);
+            setSourceKey('ORIGINAL');
+            iaStorage.setActiveInstance(origInst);
+            if (origInst.rooms.length > 0) setSelectedEntity(String(origInst.rooms[0].id));
+            if (origInst.teachers.length > 0) setChangeTeacherId(String(origInst.teachers[0].id));
         }
     }, []);
-
-    useEffect(() => {
-        if (!instance) return;
-        const prefs = iaStorage.getPreferences().filter((p) => p.approved !== false);
-        if (instance.teachers?.length > 0 && !changeTeacherId) {
-            setChangeTeacherId(String(instance.change_teacher_id || instance.teachers[0].id));
-        }
-        if (instance.rooms?.length > 0 && viewTab !== 'teacher') {
-            setSelectedEntity(String(instance.rooms[0].id));
-        }
-        // Keep active instance synced with any newly approved preferences
-        if (prefs.length > 0 && (!instance.preferences || instance.preferences.length === 0)) {
-            setInstance((prev) => (prev ? { ...prev, preferences: prefs } : prev));
-        }
-    }, [instance?.id]);
 
     const loadSource = async (key) => {
         setSourceKey(key);
         setExcelWarnings([]);
+        // Clear previous instance schedule to prevent mismatched IDs across instances
+        setResult((prev) => (prev && prev.instance_id === key ? prev : null));
         if (key === 'ORIGINAL') {
             const origInst = buildInstanceFromOriginalStorage();
             setInstance(origInst);
             iaStorage.setActiveInstance(origInst);
-            if (origInst.rooms.length > 0) setSelectedEntity(String(origInst.rooms[0].id));
+            if (viewTab === 'teacher') {
+                setSelectedEntity(origInst.teachers[0] ? String(origInst.teachers[0].id) : '');
+            } else if (origInst.rooms.length > 0) {
+                setSelectedEntity(String(origInst.rooms[0].id));
+            }
             if (origInst.teachers.length > 0) setChangeTeacherId(String(origInst.teachers[0].id));
             return;
         }
@@ -104,14 +109,17 @@ const IAOptimizer = () => {
         try {
             const data = await callIAAction({ action: 'instance', instance_id: key });
             const loaded = data.instance;
-            // Merge any user-approved R5 preferences if matching teacher IDs
             const approvedPrefs = iaStorage.getPreferences().filter((p) => p.approved !== false);
             if (approvedPrefs.length > 0) {
                 loaded.preferences = [...(loaded.preferences || []), ...approvedPrefs];
             }
             setInstance(loaded);
             iaStorage.setActiveInstance(loaded);
-            if (loaded.rooms?.length > 0) setSelectedEntity(String(loaded.rooms[0].id));
+            if (viewTab === 'teacher') {
+                setSelectedEntity(loaded.teachers?.[0] ? String(loaded.teachers[0].id) : '');
+            } else if (loaded.rooms?.length > 0) {
+                setSelectedEntity(String(loaded.rooms[0].id));
+            }
             if (loaded.teachers?.length > 0) {
                 setChangeTeacherId(String(loaded.change_teacher_id || loaded.teachers[0].id));
             }
@@ -141,7 +149,11 @@ const IAOptimizer = () => {
             setResult(enriched);
             iaStorage.setLastRun(enriched);
             iaStorage.setActiveInstance(instance);
-            if (instance.rooms?.length > 0) {
+            if (viewTab === 'teacher') {
+                const cMap = Object.fromEntries((instance.courses || []).map((c) => [c.id, c]));
+                const firstTid = (res.schedule || []).map((it) => cMap[it.course_id]?.teacher_id).find(Boolean);
+                if (firstTid) setSelectedEntity(String(firstTid));
+            } else if (instance.rooms?.length > 0) {
                 setSelectedEntity(String(instance.rooms[0].id));
             }
         } catch (err) {
@@ -215,6 +227,7 @@ const IAOptimizer = () => {
                         filename: file.name,
                     });
                     setSourceKey('EXCEL');
+                    setResult(null);
                     setInstance(res.instance);
                     iaStorage.setActiveInstance(res.instance);
                     setExcelWarnings(res.warnings || []);
@@ -231,7 +244,7 @@ const IAOptimizer = () => {
                 }
             };
             reader.readAsDataURL(file);
-        } catch (err) {
+        } catch {
             setLoading(false);
         } finally {
             e.target.value = '';
@@ -239,14 +252,14 @@ const IAOptimizer = () => {
     };
 
     const handleExportPythonExcel = async () => {
-        if (!instance || !result?.schedule) return;
+        if (!instance || !activeResult?.schedule) return;
         setLoading(true);
         try {
             const res = await callIAAction({
                 action: 'excel_export',
                 instance,
-                schedule: result.schedule,
-                validation: result.validation,
+                schedule: activeResult.schedule,
+                validation: activeResult.validation,
                 scenario,
             });
             downloadBase64File(res.file_b64, res.filename);
@@ -257,13 +270,16 @@ const IAOptimizer = () => {
         }
     };
 
+    // Ensure displayed result strictly matches active instance
+    const activeResult = result && (!result.instance_id || result.instance_id === instance?.id) ? result : null;
+
     // Helpers for rendering timetable grids
     const coursesById = Object.fromEntries((instance?.courses || []).map((c) => [c.id, c]));
     const teachersById = Object.fromEntries((instance?.teachers || []).map((t) => [t.id, t]));
     const roomsById = Object.fromEntries((instance?.rooms || []).map((r) => [r.id, r]));
 
     const usedTeacherIds = [
-        ...new Set((result?.schedule || []).map((it) => coursesById[it.course_id]?.teacher_id).filter(Boolean)),
+        ...new Set((activeResult?.schedule || []).map((it) => coursesById[it.course_id]?.teacher_id).filter(Boolean)),
     ];
 
     const handleSwitchViewTab = (tab) => {
@@ -275,7 +291,7 @@ const IAOptimizer = () => {
         }
     };
 
-    const val = result?.validation;
+    const val = activeResult?.validation;
     const hv = val?.hard_violations || {};
     const sm = val?.soft_metrics || {};
 
@@ -536,24 +552,24 @@ const IAOptimizer = () => {
                         />
                         <StatCard
                             title={val.stability ? 'Estabilidad (I4)' : 'Tiempo de Cómputo'}
-                            value={val.stability ? `${val.stability.moved_sessions} movidas` : `${result.elapsed_ms} ms`}
-                            subtitle={val.stability ? `${val.stability.unchanged_pct}% sin cambios (${result.elapsed_ms} ms)` : result.method}
+                            value={val.stability ? `${val.stability.moved_sessions} movidas` : `${activeResult.elapsed_ms} ms`}
+                            subtitle={val.stability ? `${val.stability.unchanged_pct}% sin cambios (${activeResult.elapsed_ms} ms)` : activeResult.method}
                             icon={Cpu}
                             color="bg-amber-500"
                         />
                     </div>
 
                     {/* AG Multi-run summary if applicable */}
-                    {result.runs_stats && (
+                    {activeResult.runs_stats && (
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center justify-between gap-4 text-sm">
                             <span className="font-semibold text-gray-800">
-                                Resumen Algoritmo Genético ({result.runs_stats.runs} corridas):
+                                Resumen Algoritmo Genético ({activeResult.runs_stats.runs} corridas):
                             </span>
                             <div className="flex flex-wrap gap-6 text-gray-600">
-                                <span>Mejor blanda: <strong>{result.runs_stats.best_soft}</strong></span>
-                                <span>Media blanda: <strong>{result.runs_stats.avg_soft}</strong></span>
-                                <span>Desv. estándar: <strong>{result.runs_stats.std_soft}</strong></span>
-                                <span>Media duras: <strong>{result.runs_stats.avg_hard}</strong></span>
+                                <span>Mejor blanda: <strong>{activeResult.runs_stats.best_soft}</strong></span>
+                                <span>Media blanda: <strong>{activeResult.runs_stats.avg_soft}</strong></span>
+                                <span>Desv. estándar: <strong>{activeResult.runs_stats.std_soft}</strong></span>
+                                <span>Media duras: <strong>{activeResult.runs_stats.avg_hard}</strong></span>
                             </div>
                         </div>
                     )}
@@ -593,7 +609,7 @@ const IAOptimizer = () => {
                                 Excel Completo (R1)
                             </button>
                             <button
-                                onClick={() => exportIAPDF(instance, result.schedule, val, viewTab)}
+                                onClick={() => exportIAPDF(instance, activeResult.schedule, val, viewTab)}
                                 className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-400 text-white rounded-lg hover:bg-rose-500 text-sm font-medium"
                             >
                                 <FileText size={16} />
@@ -618,7 +634,7 @@ const IAOptimizer = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {[...(result.schedule || [])]
+                                        {[...(activeResult.schedule || [])]
                                             .sort((a, b) => a.room_id - b.room_id || a.start_slot - b.start_slot)
                                             .map((it, idx) => {
                                                 const c = coursesById[it.course_id] || {};
@@ -702,7 +718,7 @@ const IAOptimizer = () => {
                                                                     ((viewTab === 'teacher' && b.type === 'teacher' && b.teacher_id === entId) ||
                                                                         (viewTab !== 'teacher' && b.type !== 'teacher' && b.room_id === entId))
                                                             );
-                                                            const matches = (result.schedule || []).filter((it) => {
+                                                            const matches = (activeResult.schedule || []).filter((it) => {
                                                                 if (it.start_slot !== slot) return false;
                                                                 if (viewTab === 'teacher') {
                                                                     return coursesById[it.course_id]?.teacher_id === entId;

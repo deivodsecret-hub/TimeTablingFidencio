@@ -32,7 +32,7 @@ const Schedule = () => {
             const { virtualRooms, expandedCourses } = generateVirtualGroups(initialStudents, initialCourses);
             setRooms(virtualRooms);
             setCourses(expandedCourses);
-        } catch (e) {
+        } catch {
             setCourses(initialCourses);
             setRooms([]);
         }
@@ -47,7 +47,7 @@ const Schedule = () => {
         if (rooms.length > 0 && !selectedRoom) {
             setSelectedRoom(rooms[0]?.id);
         }
-    }, [rooms]);
+    }, [rooms, selectedRoom]);
 
     const generateVirtualGroups = (studentsByQuarter, allCourses) => {
         const virtualRooms = [];

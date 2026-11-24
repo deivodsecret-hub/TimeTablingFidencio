@@ -456,6 +456,11 @@ const IALLM = () => {
 
                         {f1Result && (
                             <div className="space-y-5">
+                                {String(f1Result.provider_used || '').startsWith('offline') && (
+                                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                                        <strong>Aviso (Modo Respaldo Offline):</strong> Estas métricas provienen del extractor local por reglas. Para las métricas P2 reales de tu informe final, selecciona arriba <strong>Gemini, OpenAI/Groq u Ollama</strong> y vuelve a evaluar.
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div className="p-4 rounded-lg bg-blue-50 border border-blue-100">
                                         <div className="text-xs text-blue-700 font-medium">Precisión Global</div>
@@ -638,7 +643,13 @@ const IALLM = () => {
                     </div>
 
                     {p1Direct && p1Retry && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <>
+                            {String(p1Direct.provider_used || '').startsWith('offline') && (
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                                    <strong>Aviso (Modo Respaldo Offline):</strong> Resultado de demostración local. Para tu reporte P1 real, conecta arriba <strong>Gemini API, OpenAI/Groq u Ollama</strong> y vuelve a ejecutar.
+                                </div>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {[
                                 { title: 'LLM Directo (Sin corrección del validador)', data: p1Direct },
                                 { title: 'LLM Directo + 1 Ronda de Corrección Validador', data: p1Retry },
@@ -676,6 +687,7 @@ const IALLM = () => {
                                 );
                             })}
                         </div>
+                        </>
                     )}
                 </div>
             )}

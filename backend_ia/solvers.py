@@ -20,15 +20,29 @@ from validator import (
 
 
 def _get_course_room_map(inst):
-    """Maps each course_id to its room_id (by matching group_id, fallback to first room)."""
+    """Maps each course_id to its room_id: prefers group match, else balances across shared rooms matching lab/capacity."""
     rooms_by_group = {}
+    shared_rooms = []
     for r in inst["rooms"]:
-        if r["group_id"] not in rooms_by_group:
-            rooms_by_group[r["group_id"]] = r["id"]
-    fallback_room = inst["rooms"][0]["id"] if inst["rooms"] else 1
+        if r["group_id"]:
+            rooms_by_group.setdefault(r["group_id"], r["id"])
+        else:
+            shared_rooms.append(r)
+    fallback_rooms = shared_rooms or inst["rooms"] or [{"id": 1, "capacity": 35, "type": "aula"}]
+    room_load = defaultdict(int)
     mapping = {}
     for c in inst["courses"]:
-        mapping[c["id"]] = rooms_by_group.get(c["group_id"], fallback_room)
+        if c["group_id"] in rooms_by_group:
+            mapping[c["id"]] = rooms_by_group[c["group_id"]]
+        else:
+            candidates = [
+                r for r in fallback_rooms
+                if r.get("capacity", 35) >= c.get("students", 0)
+                and (not c.get("requires_lab") or r.get("type") == "lab")
+            ] or fallback_rooms
+            chosen = min(candidates, key=lambda r: room_load[r["id"]])
+            room_load[chosen["id"]] += c.get("weekly_sessions", 1)
+            mapping[c["id"]] = chosen["id"]
     return mapping
 
 
@@ -134,81 +148,91 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
 
     n_pos = len(TEACHABLE_HOURS)  # 14
 
+    def _add_linear_gaps(prefix, active_map):
+        """Pure linear boolean gap count: sum_p max(0, started[p] + remaining[p] - 1 - a[p])."""
+        if len(active_map) < 2:
+            return []
+        min_p, max_p = min(active_map.keys()), max(active_map.keys())
+        started = {}
+        remaining = {}
+        for p in range(min_p, max_p + 1):
+            a_p = active_map.get(p)
+            st = model.NewBoolVar(f"{prefix}_st_{p}")
+            if a_p is not None:
+                model.Add(st >= a_p)
+            if p > min_p:
+                model.Add(st >= started[p - 1])
+            started[p] = st
+
+        for p in range(max_p, min_p - 1, -1):
+            a_p = active_map.get(p)
+            rm = model.NewBoolVar(f"{prefix}_rm_{p}")
+            if a_p is not None:
+                model.Add(rm >= a_p)
+            if p < max_p:
+                model.Add(rm >= remaining[p + 1])
+            remaining[p] = rm
+
+        gaps = []
+        for p in range(min_p + 1, max_p):
+            a_p = active_map.get(p)
+            g = model.NewBoolVar(f"{prefix}_g_{p}")
+            if a_p is not None:
+                model.Add(g >= started[p] + remaining[p] - 1 - a_p)
+            else:
+                model.Add(g >= started[p] + remaining[p] - 1)
+            gaps.append(g)
+        return gaps
+
     # Soft 1 & 3: Student gaps & excessive daily load per group
     for gid, clist in courses_by_group.items():
         for d in range(NUM_DAYS):
-            active = []
+            active_map = {}
             for p_idx, h in enumerate(TEACHABLE_HOURS):
                 s = d * SLOTS_PER_DAY + h
                 v = [x[(c["id"], s)] for c in clist if (c["id"], s) in x]
                 if v:
                     a = model.NewBoolVar(f"ga_{gid}_{d}_{p_idx}")
                     model.Add(a == sum(v))
-                    active.append((p_idx, a))
-            if not active:
+                    active_map[p_idx] = a
+            if not active_map:
                 continue
 
             cnt = model.NewIntVar(0, n_pos, f"gcnt_{gid}_{d}")
-            model.Add(cnt == sum(a for _, a in active))
+            model.Add(cnt == sum(active_map.values()))
 
-            # Excessive day (> 6 hours)
             exc = model.NewIntVar(0, n_pos, f"gexc_{gid}_{d}")
             model.Add(exc >= cnt - 6)
             obj_terms.append(weights["excessive_days"] * exc)
 
-            # Linear gap formulation: span = last - first + 1 - cnt (when day used)
-            used = model.NewBoolVar(f"gused_{gid}_{d}")
-            model.Add(cnt >= 1).OnlyEnforceIf(used)
-            model.Add(cnt == 0).OnlyEnforceIf(used.Not())
-
-            first_p = model.NewIntVar(0, n_pos - 1, f"gfirst_{gid}_{d}")
-            last_p = model.NewIntVar(0, n_pos - 1, f"glast_{gid}_{d}")
-            for p_idx, a in active:
-                model.Add(first_p <= p_idx).OnlyEnforceIf(a)
-                model.Add(last_p >= p_idx).OnlyEnforceIf(a)
-            model.Add(last_p >= first_p).OnlyEnforceIf(used)
-
-            gap = model.NewIntVar(0, n_pos, f"ggap_{gid}_{d}")
-            model.Add(gap >= last_p - first_p + 1 - cnt).OnlyEnforceIf(used)
-            obj_terms.append(weights["student_gaps"] * gap)
+            for g_var in _add_linear_gaps(f"gg_{gid}_{d}", active_map):
+                obj_terms.append(weights["student_gaps"] * g_var)
 
     # Soft 2, 3, 5: Teacher gaps, excessive days, and daily load balance
     for tid, clist in courses_by_teacher.items():
         day_cnts = []
         for d in range(NUM_DAYS):
-            active = []
+            active_map = {}
             for p_idx, h in enumerate(TEACHABLE_HOURS):
                 s = d * SLOTS_PER_DAY + h
                 v = [x[(c["id"], s)] for c in clist if (c["id"], s) in x]
                 if v:
                     a = model.NewBoolVar(f"ta_{tid}_{d}_{p_idx}")
                     model.Add(a == sum(v))
-                    active.append((p_idx, a))
-            if not active:
+                    active_map[p_idx] = a
+            if not active_map:
                 continue
 
             cnt = model.NewIntVar(0, n_pos, f"tcnt_{tid}_{d}")
-            model.Add(cnt == sum(a for _, a in active))
+            model.Add(cnt == sum(active_map.values()))
             day_cnts.append(cnt)
 
             exc = model.NewIntVar(0, n_pos, f"texc_{tid}_{d}")
             model.Add(exc >= cnt - 6)
             obj_terms.append(weights["excessive_days"] * exc)
 
-            used = model.NewBoolVar(f"tused_{tid}_{d}")
-            model.Add(cnt >= 1).OnlyEnforceIf(used)
-            model.Add(cnt == 0).OnlyEnforceIf(used.Not())
-
-            first_p = model.NewIntVar(0, n_pos - 1, f"tfirst_{tid}_{d}")
-            last_p = model.NewIntVar(0, n_pos - 1, f"tlast_{tid}_{d}")
-            for p_idx, a in active:
-                model.Add(first_p <= p_idx).OnlyEnforceIf(a)
-                model.Add(last_p >= p_idx).OnlyEnforceIf(a)
-            model.Add(last_p >= first_p).OnlyEnforceIf(used)
-
-            gap = model.NewIntVar(0, n_pos, f"tgap_{tid}_{d}")
-            model.Add(gap >= last_p - first_p + 1 - cnt).OnlyEnforceIf(used)
-            obj_terms.append(weights["teacher_gaps"] * gap)
+            for g_var in _add_linear_gaps(f"tg_{tid}_{d}", active_map):
+                obj_terms.append(weights["teacher_gaps"] * g_var)
 
         if len(day_cnts) > 1:
             max_dc = model.NewIntVar(0, n_pos, f"tmaxd_{tid}")
@@ -268,6 +292,35 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
 
     if obj_terms:
         model.Minimize(sum(obj_terms))
+
+    # Warm-start hint for larger instances so CP-SAT starts from a low-gap feasible incumbent
+    if not relaxed_avail and len(courses) >= 10:
+        sessions_hint = _build_session_list(inst, room_map)
+        domains_set_hint = {k: set(v) for k, v in domains.items()}
+        rng_hint = random.Random(7)
+        hint_assign = _construct_mrv(sessions_hint, domains, rng_hint, jitter=0.2)
+        hint_assign = _repair_conflicts(hint_assign, sessions_hint, domains, domains_set_hint, rng_hint, max_steps=80)
+        # Quick 1-pass greedy compaction for the hint
+        pref_map_hint = _extract_pref_map(inst)
+        _, _, cur_hc = _fast_score(hint_assign, sessions_hint, domains_set_hint, pref_map_hint, weights)
+        for _ in range(min(120, len(sessions_hint) * 2)):
+            idx = rng_hint.randrange(len(sessions_hint))
+            dom_c = domains[sessions_hint[idx]["course_id"]]
+            if not dom_c:
+                continue
+            old_s = hint_assign[idx]
+            for ns in rng_hint.sample(dom_c, min(6, len(dom_c))):
+                if ns == old_s:
+                    continue
+                hint_assign[idx] = ns
+                _, _, nc = _fast_score(hint_assign, sessions_hint, domains_set_hint, pref_map_hint, weights)
+                if nc < cur_hc:
+                    cur_hc = nc
+                    break
+                hint_assign[idx] = old_s
+        hint_pairs = {(sessions_hint[i]["course_id"], hint_assign[i]) for i in range(len(sessions_hint))}
+        for key, var in x.items():
+            model.AddHint(var, 1 if key in hint_pairs else 0)
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit_sec)
@@ -409,10 +462,16 @@ def _fast_score(assign, sessions, domains_set, pref_bad_by_teacher, weights, ori
             spread += cnt - seen_c[cid]
 
     pref_viol = 0
-    for tid, bad_sets in pref_bad_by_teacher.items():
+    bad_slot_prefs, max_daily_prefs = pref_bad_by_teacher
+    for tid, bad_sets in bad_slot_prefs.items():
         assigned = t_slots.get(tid, set())
         for bset in bad_sets:
             if bset & assigned:
+                pref_viol += 1
+    for tid, limits in max_daily_prefs.items():
+        day_cnts_t = t_day_counts.get(tid, [])
+        for limit in limits:
+            if any(c > limit for c in day_cnts_t):
                 pref_viol += 1
 
     soft = (
@@ -558,14 +617,19 @@ def _assign_to_schedule(assign, sessions):
 
 
 def _extract_pref_map(inst):
-    pref_map = defaultdict(list)
+    bad_slot_prefs = defaultdict(list)
+    max_daily_prefs = defaultdict(list)
     for p in inst.get("preferences", []):
         tid = int(p.get("teacher_id", 0))
-        if tid and p.get("type") != "max_daily_hours":
+        if not tid:
+            continue
+        if p.get("type") == "max_daily_hours":
+            max_daily_prefs[tid].append(int(p.get("max_hours", 4)))
+        else:
             bset = preference_forbidden_slots(p)
             if bset:
-                pref_map[tid].append(bset)
-    return pref_map
+                bad_slot_prefs[tid].append(bset)
+    return bad_slot_prefs, max_daily_prefs
 
 
 # ==============================================================================

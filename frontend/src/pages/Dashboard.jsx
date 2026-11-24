@@ -1,72 +1,67 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { storage } from '../utils/storage';
 import { Users, BookOpen, GraduationCap, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#84CC16', '#F97316', '#6366F1'];
 
-const StatCard = ({ title, value, subtitle, icon: Icon, color }) => (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-        <div className="flex justify-between items-start">
-            <div>
-                <p className="text-gray-500 text-sm font-medium">{title}</p>
-                <h3 className="text-3xl font-bold mt-2 text-gray-800">{value}</h3>
-                <p className="text-gray-400 text-xs mt-1">{subtitle}</p>
-            </div>
-            <div className={`p-3 rounded-lg ${color}`}>
-                <Icon size={24} className="text-white" />
+const StatCard = ({ title, value, subtitle, icon, color }) => {
+    const IconComp = icon;
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <div className="flex justify-between items-start">
+                <div>
+                    <p className="text-gray-500 text-sm font-medium">{title}</p>
+                    <h3 className="text-3xl font-bold mt-2 text-gray-800">{value}</h3>
+                    <p className="text-gray-400 text-xs mt-1">{subtitle}</p>
+                </div>
+                <div className={`p-3 rounded-lg ${color}`}>
+                    <IconComp size={24} className="text-white" />
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
-const Dashboard = () => {
-    const [stats, setStats] = useState({
-        teachers: 0,
-        courses: 0,
-        students: 0
+const loadDashboardState = () => {
+    const students = storage.getStudents();
+    const courses = storage.getCourses();
+    const totalStudents = Object.values(students).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
+
+    const studentData = [];
+    for (let i = 1; i <= 10; i++) {
+        if (students[i] && students[i] > 0) {
+            studentData.push({
+                name: `${i}° C`,
+                alumnos: students[i] || 0
+            });
+        }
+    }
+
+    const courseCounts = {};
+    courses.forEach(course => {
+        const q = course.cuatrimestre;
+        courseCounts[q] = (courseCounts[q] || 0) + 1;
     });
-    const [studentsByQuarter, setStudentsByQuarter] = useState([]);
-    const [coursesByQuarter, setCoursesByQuarter] = useState([]);
 
-    useEffect(() => {
-        const students = storage.getStudents();
-        const courses = storage.getCourses();
+    const courseData = Object.entries(courseCounts).map(([q, count]) => ({
+        name: `${q}° Cuatrimestre`,
+        value: count
+    }));
 
-        // Calculate total students
-        const totalStudents = Object.values(students).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
-
-        setStats({
+    return {
+        stats: {
             teachers: storage.getTeachers().length,
             courses: courses.length,
             students: totalStudents
-        });
+        },
+        studentsByQuarter: studentData,
+        coursesByQuarter: courseData
+    };
+};
 
-        // Prepare data for students chart
-        const studentData = [];
-        for (let i = 1; i <= 10; i++) {
-            if (students[i] && students[i] > 0) {
-                studentData.push({
-                    name: `${i}° C`,
-                    alumnos: students[i] || 0
-                });
-            }
-        }
-        setStudentsByQuarter(studentData);
-
-        // Prepare data for courses pie chart
-        const courseCounts = {};
-        courses.forEach(course => {
-            const q = course.cuatrimestre;
-            courseCounts[q] = (courseCounts[q] || 0) + 1;
-        });
-
-        const courseData = Object.entries(courseCounts).map(([q, count]) => ({
-            name: `${q}° Cuatrimestre`,
-            value: count
-        }));
-        setCoursesByQuarter(courseData);
-    }, []);
+const Dashboard = () => {
+    const [{ stats, studentsByQuarter, coursesByQuarter }] = useState(loadDashboardState);
 
     return (
         <div className="p-8">
@@ -135,7 +130,7 @@ const Dashboard = () => {
                                     outerRadius={100}
                                     paddingAngle={2}
                                     dataKey="value"
-                                    label={({ name, value }) => `${value}`}
+                                    label={({ value }) => `${value}`}
                                     labelLine={false}
                                 >
                                     {coursesByQuarter.map((entry, index) => (
