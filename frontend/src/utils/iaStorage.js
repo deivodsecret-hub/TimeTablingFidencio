@@ -245,7 +245,11 @@ export function exportIAPDF(instance, schedule, validation, mode = 'sabana') {
                 dayShorts.forEach((ds) => headRow2.push({ content: ds, styles: { halign: 'center', fillColor: [219, 234, 254], textColor: [30, 58, 138] } }));
             });
 
-            const bodyRows = TIME_SLOTS.map((hourLabel, hIdx) => {
+            const hasEvening = schedule.some((it) => it.start_slot % TIME_SLOTS.length >= 14);
+            const visSlots = TIME_SLOTS.map((hourLabel, hIdx) => ({ hourLabel, hIdx })).filter(
+                ({ hIdx }) => hIdx !== 8 && (hasEvening || hIdx <= 13)
+            );
+            const bodyRows = visSlots.map(({ hourLabel, hIdx }) => {
                 const isBreak = hourLabel.includes('Receso');
                 const row = [{ content: isBreak ? 'Receso' : hourLabel, styles: { fontStyle: 'bold', fillColor: isBreak ? [254, 243, 199] : [248, 250, 252] } }];
                 chunk.forEach((r) => {

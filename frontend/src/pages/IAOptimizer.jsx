@@ -47,7 +47,7 @@ const StatCard = ({ title, value, subtitle, icon, color }) => {
 };
 
 const IAOptimizer = () => {
-    const [sourceKey, setSourceKey] = useState('ORIGINAL'); // ORIGINAL | I1 | I2 | I3 | I4 | EXCEL
+    const [sourceKey, setSourceKey] = useState('ITIID_2026'); // ITIID_2026 | ORIGINAL | I1 | I2 | I3 | I4 | EXCEL
     const [instance, setInstance] = useState(null);
     const [method, setMethod] = useState('cpsat'); // cpsat | genetic | local_search
     const [scenario, setScenario] = useState('C'); // A | B | C
@@ -69,9 +69,10 @@ const IAOptimizer = () => {
 
     useEffect(() => {
         const saved = iaStorage.getActiveInstance();
-        if (saved) {
+        const isFreshItiid = saved && saved.id === 'ITIID_2026' && saved.manual_schedule && saved.rooms?.[0]?.allowed_hours;
+        if (saved && saved.id !== 'ORIGINAL' && (saved.id !== 'ITIID_2026' || isFreshItiid)) {
             setInstance(saved);
-            setSourceKey(saved.id || 'ORIGINAL');
+            setSourceKey(saved.id || 'ITIID_2026');
             if (saved.teachers?.length > 0) {
                 setChangeTeacherId(String(saved.change_teacher_id || saved.teachers[0].id));
             }
@@ -79,12 +80,24 @@ const IAOptimizer = () => {
                 setSelectedEntity(String(saved.rooms[0].id));
             }
         } else {
-            const origInst = buildInstanceFromOriginalStorage();
-            setInstance(origInst);
-            setSourceKey('ORIGINAL');
-            iaStorage.setActiveInstance(origInst);
-            if (origInst.rooms.length > 0) setSelectedEntity(String(origInst.rooms[0].id));
-            if (origInst.teachers.length > 0) setChangeTeacherId(String(origInst.teachers[0].id));
+            // Default to official ITIID Sep-Dic 2026 Excel instance on fresh load
+            callIAAction({ action: 'instance', instance_id: 'ITIID_2026' })
+                .then((data) => {
+                    const loaded = data.instance;
+                    setInstance(loaded);
+                    setSourceKey('ITIID_2026');
+                    iaStorage.setActiveInstance(loaded);
+                    if (loaded.rooms?.length > 0) setSelectedEntity(String(loaded.rooms[0].id));
+                    if (loaded.teachers?.length > 0) setChangeTeacherId(String(loaded.teachers[0].id));
+                })
+                .catch(() => {
+                    const origInst = buildInstanceFromOriginalStorage();
+                    setInstance(origInst);
+                    setSourceKey('ORIGINAL');
+                    iaStorage.setActiveInstance(origInst);
+                    if (origInst.rooms.length > 0) setSelectedEntity(String(origInst.rooms[0].id));
+                    if (origInst.teachers.length > 0) setChangeTeacherId(String(origInst.teachers[0].id));
+                });
         }
     }, []);
 
@@ -163,6 +176,35 @@ const IAOptimizer = () => {
             }
         } catch (err) {
             Swal.fire({ icon: 'error', title: 'Error ejecutando motor IA', text: err.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleLoadManualExcel = async () => {
+        if (!instance?.manual_schedule) return;
+        setLoading(true);
+        try {
+            const res = await callIAAction({
+                action: 'validate',
+                instance,
+                schedule: instance.manual_schedule,
+                scenario,
+            });
+            const enriched = {
+                method: 'Horario Oficial del Excel (Manual)',
+                method_id: 'manual',
+                elapsed_ms: 1.0,
+                schedule: instance.manual_schedule,
+                validation: res.validation,
+                instance_id: instance.id,
+                instance_name: instance.name,
+                scenario,
+            };
+            setResult(enriched);
+            iaStorage.setLastRun(enriched);
+        } catch (err) {
+            Swal.fire({ icon: 'error', title: 'Error validando horario del Excel', text: err.message });
         } finally {
             setLoading(false);
         }
@@ -300,6 +342,12 @@ const IAOptimizer = () => {
     const hv = val?.hard_violations || {};
     const sm = val?.soft_metrics || {};
 
+    // Match official UPV Excel rows: omit 13:55-14:00 micro-break (idx 8) and hide empty evening rows (18:00+) unless used
+    const hasEveningClasses = (activeResult?.schedule || []).some((it) => it.start_slot % TIME_SLOTS.length >= 14);
+    const visibleTimeSlots = TIME_SLOTS.map((label, idx) => ({ label, idx })).filter(
+        ({ idx }) => idx !== 8 && (hasEveningClasses || idx <= 13)
+    );
+
     return (
         <div className="p-8 space-y-6">
             {/* Header Row */}
@@ -332,6 +380,17 @@ const IAOptimizer = () => {
                         onChange={handleImportExcel}
                         className="hidden"
                     />
+                    {instance?.manual_schedule && (
+                        <button
+                            onClick={handleLoadManualExcel}
+                            disabled={loading}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium"
+                            title="Muestra y valida el horario exacto armado en tu Excel"
+                        >
+                            <Table2 size={16} />
+                            Ver Horario Excel
+                        </button>
+                    )}
                     <button
                         onClick={handleRunSolver}
                         disabled={loading || !instance}
@@ -674,7 +733,7 @@ const IAOptimizer = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {TIME_SLOTS.map((hourLabel, hIdx) => {
+                                            {visibleTimeSlots.map(({ label: hourLabel, idx: hIdx }) => {
                                                 const isBreak = hourLabel.includes('Receso');
                                                 const palette = [
                                                     'bg-blue-50 text-blue-900 border-blue-200',
@@ -820,7 +879,7 @@ const IAOptimizer = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {TIME_SLOTS.map((hourLabel, hIdx) => {
+                                            {visibleTimeSlots.map(({ label: hourLabel, idx: hIdx }) => {
                                                 const isBreak = hourLabel.includes('Receso');
                                                 return (
                                                     <tr key={hourLabel} className={isBreak ? 'bg-amber-50' : ''}>
@@ -922,7 +981,7 @@ const IAOptimizer = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {TIME_SLOTS.map((hourLabel, hIdx) => {
+                                            {visibleTimeSlots.map(({ label: hourLabel, idx: hIdx }) => {
                                                 const isBreak = hourLabel.includes('Receso');
                                                 return (
                                                     <tr key={hourLabel} className={isBreak ? 'bg-amber-50' : ''}>

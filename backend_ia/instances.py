@@ -292,29 +292,29 @@ def _build_itiid_sep_dic_2026():
         {"id": 20, "name": "Jameth", "window": "07:00 - 10:40", "type": "PA", "availability": _hours([0, 1, 2, 3])},
         {"id": 21, "name": "GERARDO", "window": "08:50 - 12:05", "type": "PA", "availability": _hours([2, 3, 5])},
         {"id": 22, "name": "IRIS", "window": "07:00 - 10:40", "type": "PA", "availability": _hours([0, 1, 2, 3])},
-        {"id": 23, "name": "Pendiente", "window": "08:50 - 15:00", "type": "PA", "availability": _hours([2, 3, 5, 6, 7, 9])},
+        {"id": 23, "name": "Pendiente", "window": "08:50 - 15:50", "type": "PA", "availability": _hours([2, 3, 5, 6, 7, 9, 10])},
         {"id": 24, "name": "Ramiro", "window": "14:00 - 17:40", "type": "PA", "availability": _hours([9, 10, 11, 12])},
         {"id": 25, "name": "Badillo (Comp. IM)", "window": "14:00 - 17:40", "type": "PA", "availability": _hours([9, 10, 11, 12])},
     ]
 
     rooms = [
-        {"id": 100, "code": "Inn", "name": "ITIID Inmersión", "capacity": 35, "group_id": 100, "type": "aula", "shift": "vespertino"},
-        {"id": 101, "code": "1_1", "name": "ITIID 1-1 (sin inglés)", "capacity": 35, "group_id": 101, "type": "aula", "shift": "matutino"},
-        {"id": 102, "code": "1_2", "name": "ITIID 1-2", "capacity": 35, "group_id": 102, "type": "aula", "shift": "matutino"},
-        {"id": 103, "code": "1_3", "name": "ITIID 1-3", "capacity": 35, "group_id": 103, "type": "aula", "shift": "matutino"},
-        {"id": 301, "code": "3_1", "name": "ITIID 3-1", "capacity": 35, "group_id": 301, "type": "aula", "shift": "vespertino"},
-        {"id": 401, "code": "4_1", "name": "ITIID 4-1 (sin inglés)", "capacity": 32, "group_id": 401, "type": "aula", "shift": "matutino"},
-        {"id": 402, "code": "4_2", "name": "ITIID 4-2", "capacity": 32, "group_id": 402, "type": "aula", "shift": "matutino"},
-        {"id": 403, "code": "4_3", "name": "ITIID 4-3", "capacity": 34, "group_id": 403, "type": "aula", "shift": "matutino"},
-        {"id": 701, "code": "7_1", "name": "ITIID 7-1", "capacity": 32, "group_id": 701, "type": "aula", "shift": "matutino"},
-        {"id": 702, "code": "7_2", "name": "ITIID 7-2", "capacity": 32, "group_id": 702, "type": "aula", "shift": "matutino"},
+        {"id": 100, "code": "Inn", "name": "ITIID Inmersión", "capacity": 35, "group_id": 100, "type": "aula", "shift": "vespertino", "allowed_hours": [7, 9, 10, 11, 12]},
+        {"id": 101, "code": "1_1", "name": "ITIID 1-1 (sin inglés)", "capacity": 35, "group_id": 101, "type": "aula", "shift": "matutino", "allowed_hours": [0, 1, 2, 3, 5, 6, 7, 9]},
+        {"id": 102, "code": "1_2", "name": "ITIID 1-2", "capacity": 35, "group_id": 102, "type": "aula", "shift": "matutino", "allowed_hours": [0, 1, 2, 3, 5, 6, 7, 9]},
+        {"id": 103, "code": "1_3", "name": "ITIID 1-3", "capacity": 35, "group_id": 103, "type": "aula", "shift": "matutino", "allowed_hours": [0, 1, 2, 3, 5, 6, 7, 9]},
+        {"id": 301, "code": "3_1", "name": "ITIID 3-1", "capacity": 35, "group_id": 301, "type": "aula", "shift": "vespertino", "allowed_hours": [3, 5, 6, 7, 9, 10, 11, 12]},
+        {"id": 401, "code": "4_1", "name": "ITIID 4-1 (sin inglés)", "capacity": 32, "group_id": 401, "type": "aula", "shift": "matutino", "allowed_hours": [0, 1, 2, 3, 5, 6, 7, 9]},
+        {"id": 402, "code": "4_2", "name": "ITIID 4-2", "capacity": 32, "group_id": 402, "type": "aula", "shift": "matutino", "allowed_hours": [0, 1, 2, 3, 5, 6, 7, 9]},
+        {"id": 403, "code": "4_3", "name": "ITIID 4-3", "capacity": 34, "group_id": 403, "type": "aula", "shift": "matutino", "allowed_hours": [0, 1, 2, 3, 5, 6, 7, 9]},
+        {"id": 701, "code": "7_1", "name": "ITIID 7-1", "capacity": 32, "group_id": 701, "type": "aula", "shift": "matutino", "allowed_hours": [0, 1, 2, 3, 5, 6, 7, 9]},
+        {"id": 702, "code": "7_2", "name": "ITIID 7-2", "capacity": 32, "group_id": 702, "type": "aula", "shift": "matutino", "allowed_hours": [0, 1, 2, 3, 5, 6, 7, 9]},
     ]
 
     courses = [
-        # Inmersión (100)
+        # Inmersión (100) — Tutoría sin profesor asignado en Hoja 2 (Pendiente) para evitar traslape con Ernesto en 3-1
         {"id": 1001, "name": "ALGORITMOS Y PROGRAMACIÓN", "teacher_id": 4, "group_id": 100, "cuatrimestre": 0, "weekly_sessions": 5, "students": 30},
         {"id": 1002, "name": "DESARROLLO HABILIDADES PARA APRENDER", "teacher_id": 11, "group_id": 100, "cuatrimestre": 0, "weekly_sessions": 4, "students": 30},
-        {"id": 1003, "name": "TUTORÍA", "teacher_id": 11, "group_id": 100, "cuatrimestre": 0, "weekly_sessions": 1, "students": 30},
+        {"id": 1003, "name": "TUTORÍA", "teacher_id": 23, "group_id": 100, "cuatrimestre": 0, "weekly_sessions": 1, "students": 30},
         {"id": 1004, "name": "GEOMETRÍA Y TRIGONOMETRÍA (COMP. IM)", "teacher_id": 25, "group_id": 100, "cuatrimestre": 0, "weekly_sessions": 5, "students": 30},
         {"id": 1005, "name": "ARITMÉTICA Y ÁLGEBRA", "teacher_id": 24, "group_id": 100, "cuatrimestre": 0, "weekly_sessions": 5, "students": 30},
         # ITIID 1-1 (101)
@@ -400,6 +400,7 @@ def _build_itiid_sep_dic_2026():
         (301, 11, "INGLÉS III (Comp. ISA)", "Mtra. Ericka"),
         (401, 2, "INGLÉS IV", "Prado"),
         (402, 2, "INGLÉS IV", "Miguel"),
+        (403, 2, "INGLÉS IV", "No viene en la franja"),
         (701, 3, "INGLÉS VI", "Claudia"),
         (702, 3, "INGLÉS VI", "Pablo"),
     ]

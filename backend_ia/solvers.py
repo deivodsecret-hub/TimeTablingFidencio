@@ -49,6 +49,7 @@ def _get_course_room_map(inst):
 def _get_valid_slots_per_course(inst, room_map):
     t_unavail = {int(k): set(v) for k, v in inst["teacher_unavailable"].items()}
     r_blocked = {int(k): set(v) for k, v in inst["room_blocked"].items()}
+    rooms_by_id = {r["id"]: r for r in inst.get("rooms", [])}
     domains = {}
     for c in inst["courses"]:
         tid = c["teacher_id"]
@@ -57,7 +58,12 @@ def _get_valid_slots_per_course(inst, room_map):
         if tid:
             bad |= t_unavail.get(tid, set())
         bad |= r_blocked.get(rid, set())
-        domains[c["id"]] = [s for s in TEACHABLE_SLOTS if s not in bad]
+        allowed_h = rooms_by_id.get(rid, {}).get("allowed_hours")
+        allowed_h_set = set(allowed_h) if allowed_h else None
+        domains[c["id"]] = [
+            s for s in TEACHABLE_SLOTS
+            if s not in bad and (allowed_h_set is None or (s % SLOTS_PER_DAY) in allowed_h_set)
+        ]
     return domains
 
 
@@ -248,7 +254,7 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
             model.Add(bal >= max_dc - min_dc - 2)
             obj_terms.append(weights["teacher_balance"] * bal)
 
-    # Soft 4: Weekly spread per course (max ceil(ws/5) per day)
+    # Soft 4: Weekly spread per course (max ceil(ws/5) per day) + Horizontal Band Consistency (same hour across Mon-Fri like UPV Excel!)
     for c in courses:
         cid = c["id"]
         max_d = math.ceil(c["weekly_sessions"] / 5.0)
@@ -258,6 +264,15 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
                 ov = model.NewIntVar(0, len(v), f"sp_{cid}_{d}")
                 model.Add(ov >= sum(v) - max_d)
                 obj_terms.append(weights["spread_penalty"] * ov)
+        # Encourage keeping a course at the SAME daily hour across the week (horizontal bands like UPV Excel!)
+        if c["weekly_sessions"] >= 2:
+            for h in TEACHABLE_HOURS:
+                h_vars = [x[(cid, d * SLOTS_PER_DAY + h)] for d in range(NUM_DAYS) if (cid, d * SLOTS_PER_DAY + h) in x]
+                if h_vars:
+                    uh = model.NewBoolVar(f"ch_{cid}_{h}")
+                    for hv in h_vars:
+                        model.Add(uh >= hv)
+                    obj_terms.append(4 * uh)
 
     # Soft 6: Teacher preferences (from R5 LLM)
     for idx, pref in enumerate(inst.get("preferences", [])):

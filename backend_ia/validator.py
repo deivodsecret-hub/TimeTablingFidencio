@@ -122,6 +122,7 @@ def normalize_instance(raw):
                 "group_id": int(r.get("group_id") or 0),
                 "type": r.get("type", "aula"),
                 "shift": r.get("shift", "matutino"),
+                "allowed_hours": r.get("allowed_hours"),
             })
     else:
         gids = sorted({c["group_id"] for c in norm_courses})

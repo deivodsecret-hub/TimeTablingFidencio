@@ -96,9 +96,14 @@ def export_schedule_excel_b64(raw_instance, schedule, validation=None):
             c_day.border = THIN_BORDER
         col_cursor += 7  # 1 empty separator column between groups
 
-    # Rows 5..21: time blocks
-    for h_idx, h_label in enumerate(TIME_SLOTS):
-        row_i = 5 + h_idx
+    # Rows 5..: time blocks matching UPV Excel (skip 13:55-14:00 micro-break; hide empty 18:00-20:45 evening rows)
+    used_evening = any((int(it["start_slot"]) % SLOTS_PER_DAY) >= 14 for it in (schedule or []))
+    visible_hours = [
+        (h_idx, h_label) for h_idx, h_label in enumerate(TIME_SLOTS)
+        if h_idx != 8 and (used_evening or h_idx <= 13)
+    ]
+    for vis_pos, (h_idx, h_label) in enumerate(visible_hours):
+        row_i = 5 + vis_pos
         is_break = "Receso" in h_label
         ws_sabana.row_dimensions[row_i].height = 20 if is_break else 34
         for r, start_c in room_col_starts:
