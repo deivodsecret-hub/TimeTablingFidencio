@@ -44,17 +44,18 @@ university_time_tabbling_problem_ed-main/
 
 ### Sección Inteligencia Artificial (nueva en el Sidebar)
 4. **Optimizador IA (`/ia-optimizer`)**:
-   - **Fuentes de datos (R1)**: permite usar tus datos actuales del sistema (`localStorage`), cargar las instancias oficiales (**I1 ITC-2007**, **I2 ITIID 7.º con horario manual**, **I3 ITIID completo con recursos compartidos bloqueados**, **I4 escenario de cambio**), o **importar/descargar plantillas Excel (`.xlsx`)** validadas con `pandas` y `openpyxl`.
-   - **Motores Python**:
-     - **OR-Tools CP-SAT (R2)**: optimización exacta con restricciones duras y función objetivo ponderada según **Escenario A** (prioriza estudiantes), **Escenario B** (prioriza docentes) o **Escenario C** (equilibrio).
+   - **Fuentes de datos (R1)**: permite cargar la instancia oficial **`ITIID Sep–Dic 2026` (Excel UPV — 10 grupos, 25 docentes, Franjas de Inglés fijas y Posgrado MI/DC)**, tus datos actuales del sistema (`localStorage`), las instancias del curso (**I1 ITC-2007**, **I2 ITIID 7.º con horario manual**, **I3 ITIID completo con recursos compartidos bloqueados**, **I4 escenario de cambio**), o **importar/descargar plantillas Excel (`.xlsx`)** validadas con `pandas` y `openpyxl`.
+   - **Motores Python + LLM Local**:
+     - **OR-Tools CP-SAT (R2)**: optimización exacta con desigualdades booleanas lineales para huecos y *warm-start* (`AddHint`), ponderada según **Escenario A** (prioriza estudiantes), **Escenario B** (prioriza docentes) o **Escenario C** (equilibrio).
      - **Algoritmo Genético (R3)**: representación por sesiones, selección por torneo, cruce uniforme, mutación, reparación y ejecución multi-corrida (1 a 10 corridas por instancia con media y desviación estándar).
      - **Búsqueda Local (R4)**: fase constructiva con heurística **MRV** (menor dominio restante) + **Hill Climbing con reinicios aleatorios** y reparación de conflictos.
+     - **LLM Local (Ollama)**: ejecuta el modelo local instalado en tu PC (`qwen2.5:3b` con GPU/CPU) directo + 1 ronda del validador para comparar contra los motores formales.
    - **Reprogramación (I4)**: bloquea un día a un docente y vuelve a resolver con CP-SAT penalizando cambios para mover el mínimo número de sesiones (**métrica de estabilidad**).
    - **Validador Común**: audita todo horario y reporta violaciones duras por tipo (docente, grupo, aula, disponibilidad/recesos/recursos compartidos, horas faltantes) y métricas blandas (horas muertas de alumnos, huecos docentes, jornadas >6h, reparto semanal, desbalance y % de preferencias).
-   - **Vistas y exportación**: visualización y exportación en **Excel (`openpyxl`)** y **PDF** por **Sábana General ITIID**, **Por Grupo**, **Por Docente** y **Por Aula**.
+   - **Vistas y exportación (Formato Oficial UPV)**: visualización en la página y exportación en **Excel (`openpyxl`)** y **PDF** con **Sábana General (Excel)** horizontal lado a lado (`L · M · Mi · J · V` por grupo, `Receso` y Franjas de Inglés), **Sábana Docentes (Excel)** con ventanas horarias y códigos `MI`/`DC`, además de vistas individuales **Por Grupo**, **Por Docente** y **Por Aula**.
 
 5. **Asistente LLM (`/ia-llm`)**:
-   - **Proveedor configurable**: funciona de inmediato en **Modo Respaldo Offline** (sin API Key) y soporta conexión directa a **Ollama local**, **Google Gemini API** u **OpenAI / Groq / API compatible**.
+   - **Proveedor configurable y detección automática de Ollama**: detecta automáticamente **Ollama local** en `http://127.0.0.1:11434` (por defecto `qwen2.5:3b` acelerado en GPU) y también soporta **Google Gemini API**, **OpenAI / Groq / API compatible** o **Modo Respaldo Offline** (sin API Key).
    - **Anonimización automática**: sustituye nombres reales de docentes y aulas (`Docente_01`, `Aula_01`) antes de enviar datos a proveedores externos.
    - **R5 — Extractor de Preferencias (P2)**: convierte texto en español a restricciones JSON con casillas de **revisión humana** antes de aplicarlas al optimizador. Incluye evaluador automático contra dataset anotado (10 casos) con **Precisión, Recall y F1 globales y por tipo de restricción**.
    - **R6 — Explicador y Cambios (P4 / I4)**: explica en español los conflictos del último horario validado, propone ajustes y traduce pedidos de cambio en lenguaje natural (ej. *"Docente_04 ya no puede los miércoles"*) a restricciones que disparan reprogramación mínima con CP-SAT.
@@ -72,18 +73,24 @@ university_time_tabbling_problem_ed-main/
 ### Prerrequisitos
 - **Node.js** (v18 o superior; probado en v26 LTS)
 - **Python** (3.11 o 3.12)
+- **Ollama** (opcional para modelo local en GPU/CPU; recomendado `qwen2.5:3b` con `ollama pull qwen2.5:3b`)
 
 ### Instalación en una PC nueva (después de descomprimir el ZIP)
 1. Instalar dependencias de Python (para `backend_ia/`):
    ```bash
    pip install ortools openpyxl pandas requests
    ```
-2. Instalar dependencias del servidor Node.js:
+2. (Opcional — Modelo de IA Local con Ollama):
+   ```bash
+   winget install Ollama.Ollama
+   ollama pull qwen2.5:3b
+   ```
+3. Instalar dependencias del servidor Node.js:
    ```bash
    cd server
    npm install
    ```
-3. Instalar dependencias del frontend React/Vite:
+4. Instalar dependencias del frontend React/Vite:
    ```bash
    cd ../frontend
    npm install
@@ -95,6 +102,7 @@ university_time_tabbling_problem_ed-main/
 
 ### Opción 1 — Rápida en Windows
 Haz doble clic en **`run_project.bat`** en la raíz del proyecto. Esto iniciará automáticamente:
+- Ollama local (`http://127.0.0.1:11434`) si está instalado
 - Backend Express + puente Python en `http://localhost:3001`
 - Frontend Vite/React en `http://localhost:5173` (se abre en el navegador)
 

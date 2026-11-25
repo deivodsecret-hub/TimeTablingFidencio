@@ -25,6 +25,7 @@ Docente_07 solicita evitar clases después de las 16:45.`;
 const IALLM = () => {
     const [activeTab, setActiveTab] = useState('r5'); // r5 | r6 | p1
     const [llmConfig, setLlmConfig] = useState(iaStorage.getLLMConfig());
+    const [ollamaStatus, setOllamaStatus] = useState({ checked: false, running: false, models: [], recommended: null });
     const [loading, setLoading] = useState(false);
 
     // R5 states
@@ -46,6 +47,39 @@ const IALLM = () => {
     useEffect(() => {
         iaStorage.setLLMConfig(llmConfig);
     }, [llmConfig]);
+
+    const checkOllama = async (silent = false) => {
+        try {
+            const st = await callIAAction({
+                action: 'llm_status',
+                llm_config: { base_url: llmConfig.base_url || 'http://localhost:11434' },
+            });
+            setOllamaStatus({ checked: true, ...st });
+            if (st.running && st.recommended) {
+                setLlmConfig((prev) => {
+                    const shouldAutoEnable = prev.provider === 'offline' || prev.provider === 'ollama';
+                    if (!shouldAutoEnable) return prev;
+                    const validModel = st.models?.includes(prev.model) ? prev.model : st.recommended;
+                    return {
+                        ...prev,
+                        provider: 'ollama',
+                        base_url: st.base_url || 'http://localhost:11434',
+                        model: validModel,
+                    };
+                });
+            }
+        } catch {
+            setOllamaStatus({ checked: true, running: false, models: [], recommended: null });
+            if (!silent) {
+                Swal.fire({ icon: 'warning', title: 'Ollama no detectado', text: 'Verifica que el servidor local de Ollama esté activo en http://localhost:11434.' });
+            }
+        }
+    };
+
+    useEffect(() => {
+        checkOllama(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const getCurrentInstance = () => {
         return iaStorage.getActiveInstance() || buildInstanceFromOriginalStorage();
@@ -192,23 +226,23 @@ const IALLM = () => {
         setLoading(true);
         try {
             const inst = getCurrentInstance();
-            const [resDirect, resRetry] = await Promise.all([
-                callIAAction({
-                    action: 'llm_direct_schedule',
-                    instance: inst,
-                    scenario: 'C',
-                    llm_config: llmConfig,
-                    with_validator_retry: false,
-                }),
-                callIAAction({
-                    action: 'llm_direct_schedule',
-                    instance: inst,
-                    scenario: 'C',
-                    llm_config: llmConfig,
-                    with_validator_retry: true,
-                }),
-            ]);
+            // Run sequentially so local Ollama GPU processes one prompt cleanly at a time
+            const resDirect = await callIAAction({
+                action: 'llm_direct_schedule',
+                instance: inst,
+                scenario: 'C',
+                llm_config: llmConfig,
+                with_validator_retry: false,
+            });
             setP1Direct(resDirect);
+
+            const resRetry = await callIAAction({
+                action: 'llm_direct_schedule',
+                instance: inst,
+                scenario: 'C',
+                llm_config: llmConfig,
+                with_validator_retry: true,
+            });
             setP1Retry(resRetry);
         } catch (err) {
             Swal.fire({ icon: 'error', title: 'Error en prueba P1', text: err.message });
@@ -234,7 +268,32 @@ const IALLM = () => {
             </div>
 
             {/* LLM Provider Config Bar */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-100">
+                    <div className="flex items-center gap-2 text-xs">
+                        <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold ${
+                                ollamaStatus.running
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-gray-100 text-gray-600 border border-gray-200'
+                            }`}
+                        >
+                            <span className={`w-2 h-2 rounded-full ${ollamaStatus.running ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                            {ollamaStatus.running
+                                ? `Ollama Local Activo (${ollamaStatus.models.length} modelo${ollamaStatus.models.length === 1 ? '' : 's'})`
+                                : 'Ollama Local no detectado en :11434'}
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => checkOllama(false)}
+                        className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1"
+                    >
+                        <RefreshCw size={13} />
+                        Detectar modelos locales
+                    </button>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Proveedor LLM</label>
@@ -243,27 +302,48 @@ const IALLM = () => {
                             onChange={(e) => setLlmConfig({ ...llmConfig, provider: e.target.value })}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
                         >
+                            <option value="ollama">Ollama Local (GPU/CPU en tu PC)</option>
                             <option value="offline">Respaldo Offline (sin API Key)</option>
-                            <option value="ollama">Ollama Local (http://localhost:11434)</option>
                             <option value="gemini">Google Gemini API</option>
                             <option value="openai">OpenAI / Groq / Compatible API</option>
                         </select>
                     </div>
 
-                    {llmConfig.provider !== 'offline' && (
+                    {llmConfig.provider === 'ollama' && (
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Modelo Local (Ollama)</label>
+                            {ollamaStatus.models?.length > 0 ? (
+                                <select
+                                    value={llmConfig.model}
+                                    onChange={(e) => setLlmConfig({ ...llmConfig, model: e.target.value })}
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                >
+                                    {ollamaStatus.models.map((m) => (
+                                        <option key={m} value={m}>
+                                            {m}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <input
+                                    type="text"
+                                    value={llmConfig.model}
+                                    onChange={(e) => setLlmConfig({ ...llmConfig, model: e.target.value })}
+                                    placeholder="qwen2.5:3b"
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                />
+                            )}
+                        </div>
+                    )}
+
+                    {(llmConfig.provider === 'gemini' || llmConfig.provider === 'openai') && (
                         <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Modelo</label>
                             <input
                                 type="text"
                                 value={llmConfig.model}
                                 onChange={(e) => setLlmConfig({ ...llmConfig, model: e.target.value })}
-                                placeholder={
-                                    llmConfig.provider === 'ollama'
-                                        ? 'llama3.2'
-                                        : llmConfig.provider === 'gemini'
-                                        ? 'gemini-2.0-flash'
-                                        : 'gpt-4o-mini'
-                                }
+                                placeholder={llmConfig.provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini'}
                                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                             />
                         </div>
@@ -299,7 +379,7 @@ const IALLM = () => {
 
                     {llmConfig.provider === 'offline' && (
                         <div className="md:col-span-3 text-xs text-gray-500 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
-                            Modo <strong>Respaldo Offline</strong> activo: usa extractor NLP determinista en español y explicador estructurado. Cambia a <strong>Gemini, OpenAI o Ollama</strong> cuando desees consultar un LLM real.
+                            Modo <strong>Respaldo Offline</strong> activo: usa extractor NLP determinista en español y explicador estructurado. Cambia a <strong>Ollama Local, Gemini u OpenAI</strong> para usar un LLM real.
                         </div>
                     )}
                 </div>
@@ -669,6 +749,15 @@ const IALLM = () => {
                                                 {v.feasible ? 'Válido (0 duras)' : `${hv.total} Violaciones Duras`}
                                             </span>
                                         </div>
+                                        <div className="flex justify-between items-center text-[11px] text-gray-500">
+                                            <span>Modelo: <strong>{box.data.provider_used}</strong></span>
+                                            <span>Tiempo: <strong>{box.data.elapsed_ms ?? '-'} ms</strong> · Sesiones: <strong>{box.data.schedule?.length || 0}</strong></span>
+                                        </div>
+                                        {box.data.warning && (
+                                            <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                                                {box.data.warning}
+                                            </div>
+                                        )}
                                         <div className="grid grid-cols-2 gap-2 text-xs">
                                             <div className="bg-white p-2.5 rounded border">Traslape Docente: <strong>{hv.teacher_conflict}</strong></div>
                                             <div className="bg-white p-2.5 rounded border">Traslape Grupo: <strong>{hv.group_conflict}</strong></div>

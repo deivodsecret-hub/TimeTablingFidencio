@@ -18,10 +18,10 @@ const IA_KEYS = {
 export const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
 export const DEFAULT_LLM_CONFIG = {
-    provider: 'offline', // 'offline' | 'ollama' | 'gemini' | 'openai'
+    provider: 'ollama', // 'ollama' | 'offline' | 'gemini' | 'openai'
     api_key: '',
-    model: '',
-    base_url: '',
+    model: 'qwen2.5:3b',
+    base_url: 'http://localhost:11434',
 };
 
 export async function callIAAction(payload) {

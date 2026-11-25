@@ -31,6 +31,11 @@ goto :start_services
 echo [1/4] Backend binary found (backend\solver.exe). Skipping compilation.
 
 :start_services
+REM Start local Ollama server if installed and not already running
+if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+    netstat -ano | findstr ":11434 " >nul 2>nul || start "Ollama Local LLM" /min "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" serve
+)
+
 echo [2/4] Starting Node.js Server...
 start "Node Server" /d "%~dp0server" cmd /k "npm start"
 

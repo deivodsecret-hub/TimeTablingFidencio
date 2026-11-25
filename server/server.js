@@ -22,7 +22,7 @@ const BREAK_HOURS = new Set([4, 8, 13]);
 
 let activePythonJobs = 0;
 const MAX_CONCURRENT_IA = 2;
-const PYTHON_TIMEOUT_MS = 45000;
+const PYTHON_TIMEOUT_MS = 180000;
 
 function runPythonIA(payload) {
     return new Promise((resolve, reject) => {
@@ -47,7 +47,7 @@ function runPythonIA(payload) {
                 finished = true;
                 py.kill();
                 activePythonJobs = Math.max(0, activePythonJobs - 1);
-                const err = new Error('Tiempo límite excedido en motor IA (45s).');
+                const err = new Error('Tiempo límite excedido en motor IA (180s).');
                 err.status = 504;
                 reject(err);
             }

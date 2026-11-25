@@ -57,7 +57,7 @@ const IAOptimizer = () => {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(iaStorage.getLastRun());
     const [excelWarnings, setExcelWarnings] = useState([]);
-    const [viewTab, setViewTab] = useState('group'); // sabana | group | teacher | room
+    const [viewTab, setViewTab] = useState('sabana'); // sabana | teachers_sabana | group | teacher | room
     const [selectedEntity, setSelectedEntity] = useState('');
     const [showJson, setShowJson] = useState(false);
 
@@ -143,8 +143,13 @@ const IAOptimizer = () => {
                 runs: agRuns,
                 restarts,
                 time_limit_sec: 6.0,
+                llm_config: method === 'llm_local' ? iaStorage.getLLMConfig() : undefined,
+                with_validator_retry: method === 'llm_local',
             };
             const res = await callIAAction(payload);
+            if (res.warning) {
+                Swal.fire({ icon: 'info', title: 'Aviso del modelo local', text: res.warning });
+            }
             const enriched = { ...res, instance_id: instance.id, instance_name: instance.name, scenario };
             setResult(enriched);
             iaStorage.setLastRun(enriched);
@@ -353,6 +358,7 @@ const IAOptimizer = () => {
                             onChange={(e) => loadSource(e.target.value)}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
+                            <option value="ITIID_2026">ITIID Sep–Dic 2026 (Excel Oficial UPV — 10 Grupos)</option>
                             <option value="ORIGINAL">Datos de mi sistema original (UPV)</option>
                             <option value="I1">I1 — Benchmark Público ITC-2007</option>
                             <option value="I2">I2 — ITIID 7° Cuatrimestre (con ref. manual)</option>
@@ -375,6 +381,7 @@ const IAOptimizer = () => {
                             <option value="cpsat">OR-Tools CP-SAT (R2 — Motor Principal)</option>
                             <option value="genetic">Algoritmo Genético (R3 — Multi-corrida)</option>
                             <option value="local_search">Búsqueda Local (R4 — MRV + Hill Climbing)</option>
+                            <option value="llm_local">LLM Local (Ollama — Directo + 1 Ronda Validador)</option>
                         </select>
                     </div>
 
@@ -579,7 +586,8 @@ const IAOptimizer = () => {
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-medium text-gray-600 mr-1">Vista:</span>
                             {[
-                                { id: 'sabana', label: 'Sábana General ITIID', icon: Table2 },
+                                { id: 'sabana', label: 'Sábana General (Excel)', icon: Table2 },
+                                { id: 'teachers_sabana', label: 'Sábana Docentes (Excel)', icon: Users },
                                 { id: 'group', label: 'Por Grupo', icon: Layers },
                                 { id: 'teacher', label: 'Por Docente', icon: Users },
                                 { id: 'room', label: 'Por Aula', icon: Building2 },
@@ -609,11 +617,11 @@ const IAOptimizer = () => {
                                 Excel Completo (R1)
                             </button>
                             <button
-                                onClick={() => exportIAPDF(instance, activeResult.schedule, val, viewTab)}
+                                onClick={() => exportIAPDF(instance, activeResult.schedule, val, viewTab === 'teachers_sabana' ? 'teacher' : viewTab)}
                                 className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-400 text-white rounded-lg hover:bg-rose-500 text-sm font-medium"
                             >
                                 <FileText size={16} />
-                                PDF ({viewTab === 'sabana' ? 'Sábana' : viewTab === 'teacher' ? 'Docentes' : viewTab === 'room' ? 'Aulas' : 'Grupos'})
+                                PDF ({viewTab === 'sabana' ? 'Sábana' : viewTab === 'teacher' || viewTab === 'teachers_sabana' ? 'Docentes' : viewTab === 'room' ? 'Aulas' : 'Grupos'})
                             </button>
                         </div>
                     </div>
@@ -621,40 +629,259 @@ const IAOptimizer = () => {
                     {/* Timetable Viewer */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                         {viewTab === 'sabana' ? (
-                            <div className="overflow-x-auto max-h-[540px]">
-                                <table className="w-full text-sm text-left border-collapse">
-                                    <thead className="bg-gray-50 sticky top-0">
-                                        <tr>
-                                            <th className="p-3 border font-semibold text-gray-700">Grupo / Aula</th>
-                                            <th className="p-3 border font-semibold text-gray-700">Día</th>
-                                            <th className="p-3 border font-semibold text-gray-700">Horario</th>
-                                            <th className="p-3 border font-semibold text-gray-700">Materia</th>
-                                            <th className="p-3 border font-semibold text-gray-700">Docente</th>
-                                            <th className="p-3 border font-semibold text-gray-700 text-center">Cuat.</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {[...(activeResult.schedule || [])]
-                                            .sort((a, b) => a.room_id - b.room_id || a.start_slot - b.start_slot)
-                                            .map((it, idx) => {
-                                                const c = coursesById[it.course_id] || {};
-                                                const t = teachersById[c.teacher_id] || {};
-                                                const r = roomsById[it.room_id] || {};
-                                                const d = Math.floor(it.start_slot / TIME_SLOTS.length);
-                                                const h = it.start_slot % TIME_SLOTS.length;
+                            <div className="space-y-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                                    <span>
+                                        Formato oficial UPV (grupos lado a lado con días <strong>L · M · Mi · J · V</strong>). Desliza horizontalmente para ver todos los grupos.
+                                    </span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 border border-blue-200 inline-block" /> Clase asignada</span>
+                                        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-sky-100 border border-sky-300 inline-block" /> Franja de Inglés / Compartido</span>
+                                        <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-100 border border-amber-200 inline-block" /> Receso</span>
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto max-h-[620px] border border-gray-200 rounded-lg">
+                                    <table className="border-collapse text-[11px] min-w-max">
+                                        <thead className="sticky top-0 z-20">
+                                            <tr>
+                                                <th
+                                                    rowSpan={2}
+                                                    className="sticky left-0 z-30 bg-slate-700 text-white p-2 border border-slate-600 text-center min-w-[96px]"
+                                                >
+                                                    Hora
+                                                </th>
+                                                {(instance?.rooms || []).map((room) => (
+                                                    <th
+                                                        key={room.id}
+                                                        colSpan={5}
+                                                        className="bg-blue-700 text-white px-2 py-2 border border-blue-600 text-center font-bold tracking-wide"
+                                                    >
+                                                        {room.name}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                            <tr>
+                                                {(instance?.rooms || []).map((room) =>
+                                                    ['L', 'M', 'Mi', 'J', 'V'].map((dl, di) => (
+                                                        <th
+                                                            key={`${room.id}-${di}`}
+                                                            className="bg-blue-50 text-blue-900 px-1.5 py-1 border border-gray-300 text-center font-semibold min-w-[98px]"
+                                                        >
+                                                            {dl}
+                                                        </th>
+                                                    ))
+                                                )}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {TIME_SLOTS.map((hourLabel, hIdx) => {
+                                                const isBreak = hourLabel.includes('Receso');
+                                                const palette = [
+                                                    'bg-blue-50 text-blue-900 border-blue-200',
+                                                    'bg-emerald-50 text-emerald-900 border-emerald-200',
+                                                    'bg-purple-50 text-purple-900 border-purple-200',
+                                                    'bg-indigo-50 text-indigo-900 border-indigo-200',
+                                                    'bg-teal-50 text-teal-900 border-teal-200',
+                                                    'bg-rose-50 text-rose-900 border-rose-200',
+                                                ];
                                                 return (
-                                                    <tr key={idx} className="hover:bg-blue-50/40">
-                                                        <td className="p-2.5 border font-medium text-gray-800">{r.name || it.room_id}</td>
-                                                        <td className="p-2.5 border text-gray-600">{DAYS[d]}</td>
-                                                        <td className="p-2.5 border text-gray-600 whitespace-nowrap">{TIME_SLOTS[h]}</td>
-                                                        <td className="p-2.5 border font-medium text-blue-700">{c.name || it.course_id}</td>
-                                                        <td className="p-2.5 border text-gray-700">{t.name || 'Sin docente'}</td>
-                                                        <td className="p-2.5 border text-center text-gray-600">{c.cuatrimestre || '-'}°</td>
+                                                    <tr key={hourLabel} className={isBreak ? 'bg-amber-50' : ''}>
+                                                        <td
+                                                            className={`sticky left-0 z-10 p-1.5 border border-gray-300 font-semibold whitespace-nowrap text-center ${
+                                                                isBreak ? 'bg-amber-100 text-amber-800' : 'bg-gray-50 text-gray-700'
+                                                            }`}
+                                                        >
+                                                            {isBreak ? 'Receso' : hourLabel}
+                                                        </td>
+                                                        {(instance?.rooms || []).map((room) =>
+                                                            [0, 1, 2, 3, 4].map((dIdx) => {
+                                                                if (isBreak) {
+                                                                    return (
+                                                                        <td
+                                                                            key={`${room.id}-${dIdx}`}
+                                                                            className="p-1 border border-amber-200 text-center text-[10px] font-semibold text-amber-700 bg-amber-50"
+                                                                        >
+                                                                            Receso
+                                                                        </td>
+                                                                    );
+                                                                }
+                                                                const slot = dIdx * TIME_SLOTS.length + hIdx;
+                                                                const matches = (activeResult.schedule || []).filter(
+                                                                    (it) => it.room_id === room.id && it.start_slot === slot
+                                                                );
+                                                                const blk = (instance?.blocked_slots || []).find(
+                                                                    (b) => b.type !== 'teacher' && b.room_id === room.id && b.slot_id === slot
+                                                                );
+                                                                return (
+                                                                    <td
+                                                                        key={`${room.id}-${dIdx}`}
+                                                                        className="p-1 border border-gray-200 align-top text-center max-w-[115px]"
+                                                                    >
+                                                                        {matches.length > 0 ? (
+                                                                            matches.map((m, mi) => {
+                                                                                const c = coursesById[m.course_id] || {};
+                                                                                const t = teachersById[c.teacher_id] || {};
+                                                                                const colorCls =
+                                                                                    matches.length > 1
+                                                                                        ? 'bg-red-100 text-red-900 border-red-300'
+                                                                                        : palette[(c.teacher_id || m.course_id) % palette.length];
+                                                                                return (
+                                                                                    <div
+                                                                                        key={mi}
+                                                                                        className={`p-1 rounded border leading-tight ${colorCls}`}
+                                                                                    >
+                                                                                        <div className="font-bold text-[10px] break-words">
+                                                                                            {c.name || m.course_id}
+                                                                                        </div>
+                                                                                        <div className="text-[10px] opacity-80 mt-0.5">
+                                                                                            {t.name || 'Sin docente'}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })
+                                                                        ) : blk ? (
+                                                                            <div className="p-1 rounded bg-sky-100 text-sky-900 border border-sky-300 leading-tight">
+                                                                                <div className="font-bold text-[10px]">
+                                                                                    {blk.subject || 'INGLÉS'}
+                                                                                </div>
+                                                                                <div className="text-[10px] italic">
+                                                                                    {blk.teacher || blk.reason}
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="text-gray-300">-</span>
+                                                                        )}
+                                                                    </td>
+                                                                );
+                                                            })
+                                                        )}
                                                     </tr>
                                                 );
                                             })}
-                                    </tbody>
-                                </table>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        ) : viewTab === 'teachers_sabana' ? (
+                            <div className="space-y-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                                    <span>
+                                        Formato oficial UPV por docente (Hoja 4 del Excel): ventana de disponibilidad y grupo asignado por día (<strong>MI/DC</strong> = Posgrado compartido).
+                                    </span>
+                                </div>
+                                <div className="overflow-x-auto max-h-[620px] border border-gray-200 rounded-lg">
+                                    <table className="border-collapse text-[11px] min-w-max">
+                                        <thead className="sticky top-0 z-20">
+                                            <tr>
+                                                <th
+                                                    rowSpan={3}
+                                                    className="sticky left-0 z-30 bg-slate-700 text-white p-2 border border-slate-600 text-center min-w-[92px]"
+                                                >
+                                                    Hora
+                                                </th>
+                                                {usedTeacherIds.map((tid) => {
+                                                    const t = teachersById[tid] || { name: `Docente ${tid}` };
+                                                    return (
+                                                        <th
+                                                            key={tid}
+                                                            colSpan={5}
+                                                            className="bg-slate-700 text-white px-2 py-1.5 border border-slate-600 text-center font-bold"
+                                                        >
+                                                            {t.name}
+                                                        </th>
+                                                    );
+                                                })}
+                                            </tr>
+                                            <tr>
+                                                {usedTeacherIds.map((tid) => {
+                                                    const t = teachersById[tid] || {};
+                                                    return (
+                                                        <th
+                                                            key={`w-${tid}`}
+                                                            colSpan={5}
+                                                            className="bg-slate-100 text-slate-600 px-2 py-1 border border-gray-300 text-center text-[10px] font-medium"
+                                                        >
+                                                            {t.window || 'Disponibilidad registrada'}
+                                                        </th>
+                                                    );
+                                                })}
+                                            </tr>
+                                            <tr>
+                                                {usedTeacherIds.map((tid) =>
+                                                    ['L', 'M', 'Mi', 'J', 'V'].map((dl, di) => (
+                                                        <th
+                                                            key={`d-${tid}-${di}`}
+                                                            className="bg-blue-50 text-blue-900 px-1 py-1 border border-gray-300 text-center font-semibold min-w-[46px]"
+                                                        >
+                                                            {dl}
+                                                        </th>
+                                                    ))
+                                                )}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {TIME_SLOTS.map((hourLabel, hIdx) => {
+                                                const isBreak = hourLabel.includes('Receso');
+                                                return (
+                                                    <tr key={hourLabel} className={isBreak ? 'bg-amber-50' : ''}>
+                                                        <td
+                                                            className={`sticky left-0 z-10 p-1.5 border border-gray-300 font-semibold whitespace-nowrap text-center ${
+                                                                isBreak ? 'bg-amber-100 text-amber-800' : 'bg-gray-50 text-gray-700'
+                                                            }`}
+                                                        >
+                                                            {isBreak ? 'Receso' : hourLabel}
+                                                        </td>
+                                                        {usedTeacherIds.map((tid) =>
+                                                            [0, 1, 2, 3, 4].map((dIdx) => {
+                                                                if (isBreak) {
+                                                                    return (
+                                                                        <td key={`${tid}-${dIdx}`} className="p-1 border border-amber-200 bg-amber-50" />
+                                                                    );
+                                                                }
+                                                                const slot = dIdx * TIME_SLOTS.length + hIdx;
+                                                                const matches = (activeResult.schedule || []).filter(
+                                                                    (it) =>
+                                                                        it.start_slot === slot &&
+                                                                        coursesById[it.course_id]?.teacher_id === tid
+                                                                );
+                                                                const blk = (instance?.blocked_slots || []).find(
+                                                                    (b) => b.type === 'teacher' && b.teacher_id === tid && b.slot_id === slot
+                                                                );
+                                                                return (
+                                                                    <td key={`${tid}-${dIdx}`} className="p-1 border border-gray-200 text-center">
+                                                                        {matches.length > 0 ? (
+                                                                            <span
+                                                                                className={`inline-block px-1.5 py-0.5 rounded font-bold text-[10px] ${
+                                                                                    matches.length > 1
+                                                                                        ? 'bg-red-100 text-red-800'
+                                                                                        : 'bg-blue-100 text-blue-800'
+                                                                                }`}
+                                                                                title={matches.map((m) => coursesById[m.course_id]?.name).join(' / ')}
+                                                                            >
+                                                                                {matches
+                                                                                    .map((m) => roomsById[m.room_id]?.code || roomsById[m.room_id]?.name || m.room_id)
+                                                                                    .join('/')}
+                                                                            </span>
+                                                                        ) : blk ? (
+                                                                            <span
+                                                                                className="inline-block px-1.5 py-0.5 rounded font-bold text-[10px] bg-purple-100 text-purple-800"
+                                                                                title={blk.reason}
+                                                                            >
+                                                                                {blk.posgrado_code || 'COMP'}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-gray-200">·</span>
+                                                                        )}
+                                                                    </td>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         ) : (
                             <div>

@@ -1,6 +1,7 @@
 import json
 import random
 import re
+import time
 import unicodedata
 from collections import defaultdict
 import requests
@@ -96,7 +97,56 @@ def _strip_accents(s):
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
-def _call_llm(prompt, llm_config=None, expect_json=False):
+def check_ollama_status(base_url="http://localhost:11434"):
+    """Checks if local Ollama server is running and lists installed models."""
+    url = (base_url or "http://localhost:11434").rstrip("/")
+    try:
+        resp = requests.get(f"{url}/api/tags", timeout=3)
+        resp.raise_for_status()
+        data = resp.json()
+        models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+        recommended = None
+        for pref in ("qwen2.5:3b", "qwen2.5", "llama3.2", "mistral", "gemma"):
+            match = next((m for m in models if pref in m.lower()), None)
+            if match:
+                recommended = match
+                break
+        if not recommended and models:
+            recommended = models[0]
+        return {
+            "running": True,
+            "base_url": url,
+            "models": models,
+            "recommended": recommended,
+        }
+    except Exception as exc:
+        return {
+            "running": False,
+            "base_url": url,
+            "models": [],
+            "recommended": None,
+            "error": str(exc),
+        }
+
+
+def _extract_list_from_parsed(parsed, candidate_keys):
+    """Unwraps either a top-level JSON list or a JSON object containing a list (common with Ollama JSON mode)."""
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        for k in candidate_keys:
+            val = parsed.get(k)
+            if isinstance(val, list):
+                return val
+        for val in parsed.values():
+            if isinstance(val, list):
+                return val
+        if any(k in parsed for k in ("course_id", "type")):
+            return [parsed]
+    return None
+
+
+def _call_llm(prompt, llm_config=None, expect_json=False, max_tokens=1024):
     """Calls Gemini, OpenAI-compatible API, or Ollama local. Returns (text, provider_used, error_msg)."""
     cfg = llm_config or {}
     provider = cfg.get("provider", "offline")
@@ -106,12 +156,24 @@ def _call_llm(prompt, llm_config=None, expect_json=False):
 
     try:
         if provider == "ollama":
-            base_url = (cfg.get("base_url") or "http://localhost:11434").rstrip("/")
-            model = cfg.get("model") or "llama3.2"
-            payload = {"model": model, "prompt": prompt, "stream": False}
+            base_url = (cfg.get("base_url") or "http://127.0.0.1:11434").rstrip("/")
+            model = (cfg.get("model") or "").strip()
+            if not model:
+                st = check_ollama_status(base_url)
+                model = st.get("recommended") or "qwen2.5:3b"
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_ctx": 4096,
+                    "num_predict": int(max_tokens),
+                },
+            }
             if expect_json:
                 payload["format"] = "json"
-            resp = requests.post(f"{base_url}/api/generate", json=payload, timeout=35)
+            resp = requests.post(f"{base_url}/api/generate", json=payload, timeout=120)
             resp.raise_for_status()
             return resp.json().get("response", ""), f"ollama:{model}", None
 
@@ -335,10 +397,12 @@ Docentes conocidos (anonimizados): {anon_teachers}
 Texto de preferencias:
 \"\"\"{safe_text}\"\"\"
 
-Responde ÚNICAMENTE con un JSON válido (arreglo de objetos con claves: teacher_name, type, day/before_hour/after_hour/max_hours según aplique, hard (bool), description)."""
+Responde ÚNICAMENTE con un objeto JSON válido y compacto con la clave "preferences":
+{{"preferences": [{{"teacher_name": "Docente_01", "type": "avoid_day_afternoon", "day": 4, "hard": false, "description": "..."}}]}}"""
 
-    llm_out, provider_used, warning = _call_llm(prompt, llm_config, expect_json=True)
-    parsed = _parse_json_from_text(llm_out) if llm_out else None
+    llm_out, provider_used, warning = _call_llm(prompt, llm_config, expect_json=True, max_tokens=512)
+    parsed_raw = _parse_json_from_text(llm_out) if llm_out else None
+    parsed = _extract_list_from_parsed(parsed_raw, ["preferences", "restricciones", "constraints", "items"])
 
     if isinstance(parsed, list):
         # Map anonymized names back to teacher_id in current instance
@@ -450,45 +514,78 @@ def evaluate_extractor_f1(llm_config=None):
 # ==============================================================================
 
 def llm_direct_schedule(raw_instance, scenario="C", llm_config=None, with_validator_retry=False):
-    """P1 test: asks an LLM directly to produce a timetable (anonymized) and scores it with the official validator."""
+    """P1 test & local LLM solver: asks the LLM directly to produce a timetable (anonymized) and scores it with the official validator."""
+    t0 = time.perf_counter()
     inst = normalize_instance(raw_instance)
-    anon_inst, _ = anonymize_instance(raw_instance)
     room_by_group = {r["group_id"]: r["id"] for r in inst["rooms"]}
     default_room = inst["rooms"][0]["id"] if inst["rooms"] else 1
 
     compact_courses = [
-        {"course_id": c["id"], "name": c["name"], "group_id": c["group_id"], "teacher_id": c["teacher_id"], "weekly_sessions": c["weekly_sessions"]}
+        {
+            "course_id": c["id"],
+            "name": c["name"],
+            "group_id": c["group_id"],
+            "room_id": room_by_group.get(c["group_id"], default_room),
+            "teacher_id": c["teacher_id"],
+            "weekly_sessions": c["weekly_sessions"],
+        }
         for c in inst["courses"]
     ]
-    prompt = f"""Genera un horario universitario válido en formato JSON.
-Reglas: días 0..4, bloques válidos por día {TEACHABLE_HOURS} (slot = dia*17 + hora).
-Evita traslapes de docente y de grupo, respeta todas las sesiones semanales.
-Cursos: {json.dumps(compact_courses, ensure_ascii=False)}
-Responde SOLO un JSON con formato: [{{"course_id": 37, "room_id": 701, "start_slot": 0}}, ...]"""
+    total_sessions = sum(c["weekly_sessions"] for c in inst["courses"])
 
-    llm_out, provider_used, warning = _call_llm(prompt, llm_config, expect_json=True)
-    parsed = _parse_json_from_text(llm_out) if llm_out else None
+    # Summarize teacher unavailable days/slots compactly (anonymized IDs only)
+    unavail_summary = {
+        str(tid): slots[:20]
+        for tid, slots in inst["teacher_unavailable"].items()
+        if slots
+    }
 
+    prompt = f"""Eres un generador de horarios universitarios (ITIID).
+Asigna EXACTAMENTE {total_sessions} sesiones en total (según weekly_sessions de cada curso).
+Reglas obligatorias:
+- Días: 0=Lunes, 1=Martes, 2=Miércoles, 3=Jueves, 4=Viernes.
+- Horas válidas por día (sin recesos): {TEACHABLE_HOURS}.
+- Fórmula de bloque: start_slot = dia * 17 + hora.
+- Ningún docente ni grupo puede tener 2 clases en el mismo start_slot.
+- Respeta bloqueos de disponibilidad por teacher_id: {json.dumps(unavail_summary, ensure_ascii=False)}
+
+Cursos a asignar:
+{json.dumps(compact_courses, ensure_ascii=False)}
+
+Responde ÚNICAMENTE con un objeto JSON compacto (sin saltos de línea innecesarios) con la clave "schedule":
+{{"schedule": [{{"course_id": 37, "room_id": 701, "start_slot": 0}}]}}"""
+
+    llm_out, provider_used, warning = _call_llm(prompt, llm_config, expect_json=True, max_tokens=1500)
+    parsed_raw = _parse_json_from_text(llm_out) if llm_out else None
+    parsed = _extract_list_from_parsed(parsed_raw, ["schedule", "horarios", "assignments", "clases"])
+
+    used_real_llm = False
     if isinstance(parsed, list) and len(parsed) > 0:
         sched = []
         for it in parsed:
             if isinstance(it, dict) and "course_id" in it and "start_slot" in it:
-                cid = int(it["course_id"])
-                c_obj = next((c for c in inst["courses"] if c["id"] == cid), None)
-                rid = int(it.get("room_id") or (room_by_group.get(c_obj["group_id"], default_room) if c_obj else default_room))
-                sched.append({"course_id": cid, "room_id": rid, "start_slot": int(it["start_slot"])})
-    else:
-        # Realistic LLM-direct simulation baseline (plausible-looking schedule that ignores cross-constraints/availability, matching Alharbi 2026 findings)
+                try:
+                    cid = int(it["course_id"])
+                    slot = int(it["start_slot"])
+                    c_obj = next((c for c in inst["courses"] if c["id"] == cid), None)
+                    rid = int(it.get("room_id") or (room_by_group.get(c_obj["group_id"], default_room) if c_obj else default_room))
+                    sched.append({"course_id": cid, "room_id": rid, "start_slot": slot})
+                except (TypeError, ValueError):
+                    continue
+        used_real_llm = len(sched) > 0
+
+    if not used_real_llm:
+        if llm_out and not warning:
+            warning = f"El modelo ({provider_used}) no devolvió un JSON de horario válido; se aplicó respaldo local."
         rng = random.Random(2026)
         sched = []
         for idx, c in enumerate(inst["courses"]):
             rid = room_by_group.get(c["group_id"], default_room)
-            # An autoregressive LLM tends to assign courses sequentially into favorite morning slots causing collisions & availability misses
             for s_i in range(c["weekly_sessions"]):
                 d = (s_i + idx // 3) % 5
                 h = TEACHABLE_HOURS[(idx + s_i // 5) % 6]
                 if rng.random() < 0.12:
-                    h = 4  # occasional break-slot hallucination
+                    h = 4
                 sched.append({"course_id": c["id"], "room_id": rid, "start_slot": d * SLOTS_PER_DAY + h})
         provider_used = "offline (simulación LLM directo sin motor)"
 
@@ -498,34 +595,59 @@ Responde SOLO un JSON con formato: [{{"course_id": 37, "room_id": 701, "start_sl
         return {
             "provider_used": provider_used,
             "warning": warning,
+            "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
             "schedule": sched,
             "validation": val_initial,
             "retried": False,
         }
 
     # Optional 1-round feedback correction using validator conflict messages
-    if llm_config and llm_config.get("provider") != "offline" and llm_out:
-        feedback_prompt = f"""Tu horario anterior tuvo {val_initial['hard_violations']['total']} violaciones duras reportadas por el validador:
+    if used_real_llm and llm_config and llm_config.get("provider") != "offline":
+        feedback_prompt = f"""Tu horario anterior tuvo {val_initial['hard_violations']['total']} violaciones duras reportadas por el Validador Oficial:
 {json.dumps(val_initial['conflicts_detail'][:12], ensure_ascii=False)}
-Corrige el horario JSON manteniendo todos los cursos y devuelve únicamente el nuevo arreglo JSON."""
-        llm_out2, _, _ = _call_llm(feedback_prompt, llm_config, expect_json=True)
-        parsed2 = _parse_json_from_text(llm_out2) if llm_out2 else None
-        if isinstance(parsed2, list) and len(parsed2) > 0:
-            sched2 = [
-                {"course_id": int(it["course_id"]), "room_id": int(it.get("room_id", default_room)), "start_slot": int(it["start_slot"])}
-                for it in parsed2 if isinstance(it, dict) and "course_id" in it and "start_slot" in it
-            ]
-            val_after = validate_schedule(inst, sched2, scenario=scenario)
-            return {
-                "provider_used": provider_used,
-                "warning": warning,
-                "schedule": sched2,
-                "validation": val_after,
-                "initial_validation": val_initial,
-                "retried": True,
-            }
 
-    # Offline partial-fix pass (fixes ~50% of conflicts to show LLM+feedback improves slightly yet still lags CP-SAT)
+Cursos requeridos (exactamente {total_sessions} sesiones):
+{json.dumps(compact_courses, ensure_ascii=False)}
+
+Corrige las asignaciones conflictivas usando horas válidas {TEACHABLE_HOURS} (start_slot = dia*17 + hora) y responde ÚNICAMENTE con un objeto JSON compacto:
+{{"schedule": [{{"course_id": 37, "room_id": 701, "start_slot": 0}}]}}"""
+        llm_out2, _, warn2 = _call_llm(feedback_prompt, llm_config, expect_json=True, max_tokens=1500)
+        parsed_raw2 = _parse_json_from_text(llm_out2) if llm_out2 else None
+        parsed2 = _extract_list_from_parsed(parsed_raw2, ["schedule", "horarios", "assignments", "clases"])
+        if isinstance(parsed2, list) and len(parsed2) > 0:
+            sched2 = []
+            for it in parsed2:
+                if isinstance(it, dict) and "course_id" in it and "start_slot" in it:
+                    try:
+                        cid = int(it["course_id"])
+                        slot = int(it["start_slot"])
+                        c_obj = next((c for c in inst["courses"] if c["id"] == cid), None)
+                        rid = int(it.get("room_id") or (room_by_group.get(c_obj["group_id"], default_room) if c_obj else default_room))
+                        sched2.append({"course_id": cid, "room_id": rid, "start_slot": slot})
+                    except (TypeError, ValueError):
+                        continue
+            if sched2:
+                val_after = validate_schedule(inst, sched2, scenario=scenario)
+                return {
+                    "provider_used": provider_used,
+                    "warning": warning or warn2,
+                    "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
+                    "schedule": sched2,
+                    "validation": val_after,
+                    "initial_validation": val_initial,
+                    "retried": True,
+                }
+        return {
+            "provider_used": provider_used,
+            "warning": warning or warn2 or "La ronda de corrección no devolvió un JSON válido; se conserva el horario inicial.",
+            "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "schedule": sched,
+            "validation": val_initial,
+            "initial_validation": val_initial,
+            "retried": True,
+        }
+
+    # Offline partial-fix pass (only when in offline mode)
     fixed = list(sched)
     rng = random.Random(2027)
     t_unavail = {int(k): set(v) for k, v in inst["teacher_unavailable"].items()}
@@ -550,6 +672,7 @@ Corrige el horario JSON manteniendo todos los cursos y devuelve únicamente el n
     return {
         "provider_used": provider_used,
         "warning": warning,
+        "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1),
         "schedule": fixed,
         "validation": val_after,
         "initial_validation": val_initial,
@@ -577,7 +700,7 @@ Nunca inventes asignaciones directas; sugiere cambios de parámetros, escenario 
 Reporte del validador:
 {json.dumps({"feasible": validation.get("feasible"), "scenario": validation.get("scenario_name"), "hard_violations": hv, "soft_metrics": sm, "soft_penalty": validation.get("soft_penalty"), "conflicts_detail": details[:10]}, ensure_ascii=False)}"""
 
-    llm_out, provider_used, warning = _call_llm(prompt, llm_config, expect_json=False)
+    llm_out, provider_used, warning = _call_llm(prompt, llm_config, expect_json=False, max_tokens=600)
     if llm_out:
         return {"provider_used": provider_used, "warning": warning, "explanation": llm_out.strip()}
 
