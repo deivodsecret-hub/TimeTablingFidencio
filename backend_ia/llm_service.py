@@ -540,22 +540,27 @@ def llm_direct_schedule(raw_instance, scenario="C", llm_config=None, with_valida
         if slots
     }
 
+    # For very large instances (>80 sessions like ITIID_2026), keep prompt compact and bounded so local 3B models respond fast
+    is_large = total_sessions > 80
+    courses_for_prompt = compact_courses[:20] if is_large else compact_courses
+    token_budget = 2000 if is_large else 1500
+
     prompt = f"""Eres un generador de horarios universitarios (ITIID).
 Asigna EXACTAMENTE {total_sessions} sesiones en total (según weekly_sessions de cada curso).
 Reglas obligatorias:
 - Días: 0=Lunes, 1=Martes, 2=Miércoles, 3=Jueves, 4=Viernes.
-- Horas válidas por día (sin recesos): {TEACHABLE_HOURS}.
+- Horas válidas por día (sin recesos): {TEACHABLE_HOURS}. Empieza los grupos matutinos desde hora 0 (07:00).
 - Fórmula de bloque: start_slot = dia * 17 + hora.
 - Ningún docente ni grupo puede tener 2 clases en el mismo start_slot.
 - Respeta bloqueos de disponibilidad por teacher_id: {json.dumps(unavail_summary, ensure_ascii=False)}
 
-Cursos a asignar:
-{json.dumps(compact_courses, ensure_ascii=False)}
+Cursos a asignar{" (primeros 20 de " + str(len(compact_courses)) + " por límite de contexto)" if is_large else ""}:
+{json.dumps(courses_for_prompt, ensure_ascii=False)}
 
 Responde ÚNICAMENTE con un objeto JSON compacto (sin saltos de línea innecesarios) con la clave "schedule":
 {{"schedule": [{{"course_id": 37, "room_id": 701, "start_slot": 0}}]}}"""
 
-    llm_out, provider_used, warning = _call_llm(prompt, llm_config, expect_json=True, max_tokens=1500)
+    llm_out, provider_used, warning = _call_llm(prompt, llm_config, expect_json=True, max_tokens=token_budget)
     parsed_raw = _parse_json_from_text(llm_out) if llm_out else None
     parsed = _extract_list_from_parsed(parsed_raw, ["schedule", "horarios", "assignments", "clases"])
 
@@ -607,11 +612,11 @@ Responde ÚNICAMENTE con un objeto JSON compacto (sin saltos de línea innecesar
 {json.dumps(val_initial['conflicts_detail'][:12], ensure_ascii=False)}
 
 Cursos requeridos (exactamente {total_sessions} sesiones):
-{json.dumps(compact_courses, ensure_ascii=False)}
+{json.dumps(courses_for_prompt, ensure_ascii=False)}
 
 Corrige las asignaciones conflictivas usando horas válidas {TEACHABLE_HOURS} (start_slot = dia*17 + hora) y responde ÚNICAMENTE con un objeto JSON compacto:
 {{"schedule": [{{"course_id": 37, "room_id": 701, "start_slot": 0}}]}}"""
-        llm_out2, _, warn2 = _call_llm(feedback_prompt, llm_config, expect_json=True, max_tokens=1500)
+        llm_out2, _, warn2 = _call_llm(feedback_prompt, llm_config, expect_json=True, max_tokens=token_budget)
         parsed_raw2 = _parse_json_from_text(llm_out2) if llm_out2 else None
         parsed2 = _extract_list_from_parsed(parsed_raw2, ["schedule", "horarios", "assignments", "clases"])
         if isinstance(parsed2, list) and len(parsed2) > 0:

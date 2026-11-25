@@ -184,8 +184,10 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
             gaps.append(g)
         return gaps
 
-    # Soft 1 & 3: Student gaps & excessive daily load per group
+    # Soft 1 & 3: Student gaps, excessive daily load, and early-start (07:00) priority for morning groups
+    room_shift_by_gid = {r.get("group_id", r["id"]): r.get("shift", "matutino") for r in inst.get("rooms", [])}
     for gid, clist in courses_by_group.items():
+        is_morning_group = room_shift_by_gid.get(gid, "matutino") != "vespertino"
         for d in range(NUM_DAYS):
             active_map = {}
             for p_idx, h in enumerate(TEACHABLE_HOURS):
@@ -195,6 +197,9 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
                     a = model.NewBoolVar(f"ga_{gid}_{d}_{p_idx}")
                     model.Add(a == sum(v))
                     active_map[p_idx] = a
+                    # Gentle tie-breaker so morning groups pack from 07:00 AM without spilling to afternoon
+                    if is_morning_group and p_idx > 0:
+                        obj_terms.append(p_idx * a)
             if not active_map:
                 continue
 

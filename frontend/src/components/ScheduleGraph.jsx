@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
+import { TIME_SLOTS } from '../utils/initialData';
 
 const ScheduleGraph = ({ schedule, courses, teachers, rooms }) => {
     const graphRef = useRef();
@@ -56,12 +57,14 @@ const ScheduleGraph = ({ schedule, courses, teachers, rooms }) => {
                 });
             }
 
-            // Time slot node
+            // Time slot node (17 slots per day including 3 breaks)
             const slotId = `slot_${item.start_slot}`;
-            const day = Math.floor(item.start_slot / 14);
-            const hour = item.start_slot % 14;
+            const slotsPerDay = TIME_SLOTS.length;
+            const day = Math.floor(item.start_slot / slotsPerDay);
+            const hour = item.start_slot % slotsPerDay;
             const days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
-            const slotLabel = `${days[day]} H${hour + 1}`;
+            const shortTime = TIME_SLOTS[hour] ? TIME_SLOTS[hour].split(' - ')[0] : `H${hour + 1}`;
+            const slotLabel = `${days[day] || `D${day + 1}`} ${shortTime}`;
             addNode(slotId, slotLabel, 'slot', '#6B7280');
 
             // Link course -> slot

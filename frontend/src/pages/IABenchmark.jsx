@@ -337,16 +337,17 @@ const IABenchmark = () => {
                             {/* Charts (same Recharts aesthetic as Dashboard.jsx) */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                                    <h3 className="text-lg font-bold text-gray-800 mb-4">Violaciones Duras vs Penalización Blanda</h3>
+                                    <h3 className="text-lg font-bold text-gray-800 mb-4">Violaciones Duras vs Penalización Blanda (Doble Eje)</h3>
                                     <ResponsiveContainer width="100%" height={260}>
                                         <BarChart data={chartData}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                                             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                                            <YAxis tick={{ fontSize: 11 }} />
+                                            <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#EF4444' }} label={{ value: 'Duras', angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#EF4444' } }} />
+                                            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#3B82F6' }} label={{ value: 'Blanda', angle: 90, position: 'insideRight', style: { fontSize: 10, fill: '#3B82F6' } }} />
                                             <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }} />
                                             <Legend wrapperStyle={{ fontSize: '12px' }} />
-                                            <Bar dataKey="duras" name="Violaciones Duras" fill="#EF4444" radius={[4, 4, 0, 0]} />
-                                            <Bar dataKey="blanda" name="Penalización Blanda" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                                            <Bar yAxisId="left" dataKey="duras" name="Violaciones Duras (Eje Izq.)" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                                            <Bar yAxisId="right" dataKey="blanda" name="Penalización Blanda (Eje Der.)" fill="#3B82F6" radius={[4, 4, 0, 0]} />
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>

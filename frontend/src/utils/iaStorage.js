@@ -221,41 +221,70 @@ export function exportIAPDF(instance, schedule, validation, mode = 'sabana') {
     const pageW = doc.internal.pageSize.width;
 
     if (mode === 'sabana') {
-        doc.setFontSize(16);
-        doc.setFont('helvetica', 'bold');
-        doc.text('SÁBANA GENERAL DE HORARIOS — ITIID', pageW / 2, 14, { align: 'center' });
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        const subtitle = `${instance.name || 'ITIID'} | Factible: ${validation?.feasible ? 'SÍ (0 duras)' : `NO (${validation?.hard_violations?.total || 0} duras)`} | Penalización Blanda: ${validation?.soft_penalty ?? '-'}`;
-        doc.text(subtitle, pageW / 2, 21, { align: 'center' });
+        // Horizontal UPV Sábana General (groups side-by-side in clean landscape pairs per page, including Franjas de Inglés)
+        const roomsList = instance.rooms || [];
+        const dayShorts = ['L', 'M', 'Mi', 'J', 'V'];
+        const GROUPS_PER_PAGE = 2;
 
-        const rows = [...schedule]
-            .sort((a, b) => a.room_id - b.room_id || a.start_slot - b.start_slot)
-            .map((it) => {
-                const c = coursesById[it.course_id] || {};
-                const t = teachersById[c.teacher_id] || {};
-                const r = roomsById[it.room_id] || {};
-                const d = Math.floor(it.start_slot / TIME_SLOTS.length);
-                const h = it.start_slot % TIME_SLOTS.length;
-                return [
-                    r.name || `Grupo ${it.room_id}`,
-                    DAYS[d] || `Día ${d}`,
-                    TIME_SLOTS[h] || String(h),
-                    c.name || `Curso ${it.course_id}`,
-                    t.name || 'Sin docente',
-                    `${c.cuatrimestre || '-'}°`,
-                ];
+        for (let offset = 0; offset < roomsList.length; offset += GROUPS_PER_PAGE) {
+            if (offset > 0) doc.addPage();
+            const chunk = roomsList.slice(offset, offset + GROUPS_PER_PAGE);
+
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('SÁBANA GENERAL DE HORARIOS — ITIID (FORMATO UPV)', pageW / 2, 12, { align: 'center' });
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            const subtitle = `${instance.name || 'ITIID'} | Factible: ${validation?.feasible ? 'SÍ (0 duras)' : `NO (${validation?.hard_violations?.total || 0} duras)`} | Penalización Blanda: ${validation?.soft_penalty ?? '-'} | Hoja ${Math.floor(offset / GROUPS_PER_PAGE) + 1}/${Math.ceil(roomsList.length / GROUPS_PER_PAGE)}`;
+            doc.text(subtitle, pageW / 2, 18, { align: 'center' });
+
+            const headRow1 = [{ content: 'Hora', rowSpan: 2, styles: { valign: 'middle', fillColor: [51, 65, 85] } }];
+            const headRow2 = [];
+            chunk.forEach((r) => {
+                headRow1.push({ content: r.name, colSpan: 5, styles: { halign: 'center', fillColor: [29, 78, 216] } });
+                dayShorts.forEach((ds) => headRow2.push({ content: ds, styles: { halign: 'center', fillColor: [219, 234, 254], textColor: [30, 58, 138] } }));
             });
 
-        autoTable(doc, {
-            head: [['Grupo / Aula', 'Día', 'Horario', 'Materia', 'Docente', 'Cuat.']],
-            body: rows,
-            startY: 26,
-            theme: 'grid',
-            headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', halign: 'center' },
-            styles: { fontSize: 8, cellPadding: 2, valign: 'middle' },
-            alternateRowStyles: { fillColor: [248, 250, 252] },
-        });
+            const bodyRows = TIME_SLOTS.map((hourLabel, hIdx) => {
+                const isBreak = hourLabel.includes('Receso');
+                const row = [{ content: isBreak ? 'Receso' : hourLabel, styles: { fontStyle: 'bold', fillColor: isBreak ? [254, 243, 199] : [248, 250, 252] } }];
+                chunk.forEach((r) => {
+                    for (let dIdx = 0; dIdx < 5; dIdx++) {
+                        if (isBreak) {
+                            row.push({ content: 'Receso', styles: { fillColor: [254, 243, 199], textColor: [146, 64, 14] } });
+                            continue;
+                        }
+                        const slot = dIdx * TIME_SLOTS.length + hIdx;
+                        const matches = schedule.filter((it) => it.room_id === r.id && it.start_slot === slot);
+                        const blk = (instance.blocked_slots || []).find((b) => b.type !== 'teacher' && b.room_id === r.id && b.slot_id === slot);
+                        if (matches.length > 0) {
+                            const txt = matches
+                                .map((m) => {
+                                    const c = coursesById[m.course_id] || {};
+                                    const t = teachersById[c.teacher_id] || {};
+                                    return `${c.name || m.course_id}\n${t.name || ''}`;
+                                })
+                                .join('\n---\n');
+                            row.push({ content: txt, styles: { fillColor: [239, 246, 255] } });
+                        } else if (blk) {
+                            row.push({ content: `${blk.subject || 'INGLÉS'}\n${blk.teacher || blk.reason || ''}`, styles: { fillColor: [224, 242, 254], textColor: [3, 105, 161] } });
+                        } else {
+                            row.push({ content: '-' });
+                        }
+                    }
+                });
+                return row;
+            });
+
+            autoTable(doc, {
+                head: [headRow1, headRow2],
+                body: bodyRows,
+                startY: 22,
+                theme: 'grid',
+                styles: { fontSize: 6.2, cellPadding: 1.2, halign: 'center', valign: 'middle', overflow: 'linebreak' },
+                columnStyles: { 0: { cellWidth: 22 } },
+            });
+        }
         doc.save('Sabana_General_ITIID.pdf');
         return;
     }

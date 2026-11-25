@@ -67,7 +67,7 @@ def _build_itc2007():
         {"id": 2005, "name": "c0019_Security", "teacher_id": 5, "group_id": 102, "cuatrimestre": 2, "weekly_sessions": 3, "students": 28},
     ]
     preferences = [
-        {"teacher_id": 1, "teacher_name": "Prof_T01", "type": "avoid_early", "before_hour": 1, "description": "Evitar primera hora 07:00"},
+        {"teacher_id": 1, "teacher_name": "Prof_T01", "type": "avoid_late", "after_hour": 11, "description": "Evitar bloques después de las 15:50"},
         {"teacher_id": 5, "teacher_name": "Prof_T05", "type": "prefer_morning", "description": "Preferencia por turno matutino"},
         {"teacher_id": 4, "teacher_name": "Prof_T04", "type": "avoid_day_afternoon", "day": 4, "description": "Evitar viernes por la tarde"},
     ]
@@ -109,7 +109,7 @@ def _build_itiid_q7():
         {"id": 43, "name": "Seguridad Informática", "teacher_id": 7, "group_id": 701, "cuatrimestre": 7, "weekly_sessions": 6, "students": 30},
     ]
     preferences = [
-        {"teacher_id": 4, "teacher_name": "Docente_04 (Fund. de IA)", "type": "avoid_early", "before_hour": 1, "description": "Evitar clase a las 07:00"},
+        {"teacher_id": 4, "teacher_name": "Docente_04 (Fund. de IA)", "type": "avoid_late", "after_hour": 11, "description": "Evitar sesiones después de las 15:50"},
         {"teacher_id": 2, "teacher_name": "Docente_02 (Hab. Gerenciales)", "type": "avoid_day", "day": 4, "description": "Preferir no dar clase los viernes"},
         {"teacher_id": 7, "teacher_name": "Docente_07 (Seguridad Info.)", "type": "prefer_morning", "description": "Preferencia matutina antes de las 14:00"},
     ]
@@ -232,7 +232,7 @@ def _build_itiid_full():
         {"type": "teacher", "teacher_id": 3, "slot_id": 0 * 17 + 9, "reason": "Docente_03 en Álgebra de Manufactura (Lun 14:00)"},
     ]
     preferences = [
-        {"teacher_id": 6, "teacher_name": "Docente_06 (IA/Ciencia Datos)", "type": "avoid_early", "before_hour": 1, "description": "Evitar 07:00"},
+        {"teacher_id": 6, "teacher_name": "Docente_06 (IA/Ciencia Datos)", "type": "avoid_late", "after_hour": 11, "description": "Evitar clases después de las 15:50"},
         {"teacher_id": 8, "teacher_name": "Docente_08 (Proyectos/Gestión)", "type": "avoid_day_afternoon", "day": 4, "description": "Evitar viernes por la tarde"},
         {"teacher_id": 5, "teacher_name": "Docente_05 (Programación/ED)", "type": "prefer_morning", "description": "Preferencia matutina"},
     ]
@@ -298,16 +298,16 @@ def _build_itiid_sep_dic_2026():
     ]
 
     rooms = [
-        {"id": 100, "code": "Inn", "name": "ITIID Inmersión", "capacity": 35, "group_id": 100, "type": "aula"},
-        {"id": 101, "code": "1_1", "name": "ITIID 1-1 (sin inglés)", "capacity": 35, "group_id": 101, "type": "aula"},
-        {"id": 102, "code": "1_2", "name": "ITIID 1-2", "capacity": 35, "group_id": 102, "type": "aula"},
-        {"id": 103, "code": "1_3", "name": "ITIID 1-3", "capacity": 35, "group_id": 103, "type": "aula"},
-        {"id": 301, "code": "3_1", "name": "ITIID 3-1", "capacity": 35, "group_id": 301, "type": "aula"},
-        {"id": 401, "code": "4_1", "name": "ITIID 4-1 (sin inglés)", "capacity": 32, "group_id": 401, "type": "aula"},
-        {"id": 402, "code": "4_2", "name": "ITIID 4-2", "capacity": 32, "group_id": 402, "type": "aula"},
-        {"id": 403, "code": "4_3", "name": "ITIID 4-3", "capacity": 34, "group_id": 403, "type": "aula"},
-        {"id": 701, "code": "7_1", "name": "ITIID 7-1", "capacity": 32, "group_id": 701, "type": "aula"},
-        {"id": 702, "code": "7_2", "name": "ITIID 7-2", "capacity": 32, "group_id": 702, "type": "aula"},
+        {"id": 100, "code": "Inn", "name": "ITIID Inmersión", "capacity": 35, "group_id": 100, "type": "aula", "shift": "vespertino"},
+        {"id": 101, "code": "1_1", "name": "ITIID 1-1 (sin inglés)", "capacity": 35, "group_id": 101, "type": "aula", "shift": "matutino"},
+        {"id": 102, "code": "1_2", "name": "ITIID 1-2", "capacity": 35, "group_id": 102, "type": "aula", "shift": "matutino"},
+        {"id": 103, "code": "1_3", "name": "ITIID 1-3", "capacity": 35, "group_id": 103, "type": "aula", "shift": "matutino"},
+        {"id": 301, "code": "3_1", "name": "ITIID 3-1", "capacity": 35, "group_id": 301, "type": "aula", "shift": "vespertino"},
+        {"id": 401, "code": "4_1", "name": "ITIID 4-1 (sin inglés)", "capacity": 32, "group_id": 401, "type": "aula", "shift": "matutino"},
+        {"id": 402, "code": "4_2", "name": "ITIID 4-2", "capacity": 32, "group_id": 402, "type": "aula", "shift": "matutino"},
+        {"id": 403, "code": "4_3", "name": "ITIID 4-3", "capacity": 34, "group_id": 403, "type": "aula", "shift": "matutino"},
+        {"id": 701, "code": "7_1", "name": "ITIID 7-1", "capacity": 32, "group_id": 701, "type": "aula", "shift": "matutino"},
+        {"id": 702, "code": "7_2", "name": "ITIID 7-2", "capacity": 32, "group_id": 702, "type": "aula", "shift": "matutino"},
     ]
 
     courses = [
@@ -435,17 +435,102 @@ def _build_itiid_sep_dic_2026():
             "reason": f"Posgrado ({code})",
         })
 
+    # Exact manual schedule from Hoja 3 of the official ITIID Sep-Dic 2026 Excel (299 sessions)
+    def _m(cid, rid, pairs):
+        return [{"course_id": cid, "room_id": rid, "start_slot": d * SLOTS_PER_DAY + h} for d, h in pairs]
+
+    manual_schedule = (
+        # Inmersión (100)
+        _m(1001, 100, [(0, 9), (1, 9), (2, 9), (3, 9), (4, 9)])
+        + _m(1002, 100, [(0, 10), (1, 10), (2, 10), (3, 10)])
+        + _m(1003, 100, [(4, 10)])
+        + _m(1004, 100, [(0, 11), (4, 11), (0, 12), (2, 12), (4, 12)])
+        + _m(1005, 100, [(1, 11), (2, 11), (3, 11), (1, 12), (3, 12)])
+        # ITIID 1-1 (101)
+        + _m(1105, 101, [(0, 0), (1, 0), (2, 0), (3, 0)])
+        + _m(1104, 101, [(4, 0), (0, 1), (1, 1), (2, 1), (3, 1), (4, 1)])
+        + _m(1102, 101, [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2), (1, 3), (4, 3)])
+        + _m(1103, 101, [(0, 3), (2, 3), (3, 3), (4, 5)])
+        + _m(1101, 101, [(0, 5), (1, 5), (2, 5), (3, 5)])
+        + _m(1106, 101, [(0, 6), (1, 6), (0, 7), (1, 7), (2, 7)])
+        + _m(1107, 101, [(2, 6)])
+        # ITIID 1-2 (102)
+        + _m(1203, 102, [(0, 0), (1, 0), (2, 0), (3, 0)])
+        + _m(1205, 102, [(0, 2), (1, 2), (2, 2), (3, 2)])
+        + _m(1201, 102, [(4, 2), (1, 3), (2, 6), (3, 6)])
+        + _m(1202, 102, [(0, 3), (2, 3), (3, 3), (0, 5), (1, 5), (2, 5), (3, 5)])
+        + _m(1204, 102, [(4, 3), (4, 5), (0, 7), (1, 7), (2, 7), (3, 7)])
+        + _m(1206, 102, [(0, 6), (4, 6), (4, 7), (1, 9), (2, 9)])
+        + _m(1207, 102, [(1, 6)])
+        # ITIID 1-3 (103)
+        + _m(1305, 103, [(0, 0), (1, 0), (2, 0), (3, 0)])
+        + _m(1306, 103, [(0, 2), (1, 3), (2, 3), (3, 3), (4, 3)])
+        + _m(1304, 103, [(1, 2), (2, 2), (3, 2), (4, 2), (0, 3), (0, 5)])
+        + _m(1307, 103, [(1, 5)])
+        + _m(1303, 103, [(2, 5), (3, 5), (0, 9), (1, 9)])
+        + _m(1301, 103, [(4, 5), (1, 6), (2, 6), (3, 6)])
+        + _m(1302, 103, [(0, 6), (4, 6), (0, 7), (1, 7), (2, 7), (3, 7), (4, 7)])
+        # ITIID 3-1 (301)
+        + _m(3101, 301, [(0, 3), (1, 3), (2, 3), (3, 3)])
+        + _m(3107, 301, [(0, 5)])
+        + _m(3102, 301, [(1, 5), (2, 5), (3, 5), (4, 7)])
+        + _m(3105, 301, [(0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (1, 7), (3, 7)])
+        + _m(3104, 301, [(0, 7), (0, 9), (1, 9), (2, 9), (3, 9)])
+        + _m(3106, 301, [(0, 10), (1, 10), (2, 10), (3, 10)])
+        + _m(3103, 301, [(4, 9), (4, 10), (0, 12), (1, 12), (2, 12), (3, 12)])
+        # ITIID 4-1 (401)
+        + _m(4105, 401, [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (4, 1)])
+        + _m(4106, 401, [(0, 1), (1, 1), (2, 1), (3, 1), (4, 3)])
+        + _m(4103, 401, [(0, 3), (1, 3), (2, 3), (3, 3), (4, 7)])
+        + _m(4104, 401, [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5)])
+        + _m(4102, 401, [(0, 6), (1, 6), (3, 6), (4, 6), (2, 9)])
+        + _m(4107, 401, [(2, 6)])
+        + _m(4101, 401, [(0, 7), (1, 7), (2, 7), (3, 7)])
+        # ITIID 4-2 (402)
+        + _m(4203, 402, [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)])
+        + _m(4202, 402, [(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)])
+        + _m(4201, 402, [(0, 3), (1, 3), (2, 3), (3, 3)])
+        + _m(4204, 402, [(4, 3), (4, 5), (3, 6), (0, 7), (3, 7)])
+        + _m(4205, 402, [(0, 5), (1, 5), (2, 5), (3, 5), (1, 6), (4, 7)])
+        + _m(4206, 402, [(0, 6), (2, 6), (1, 7), (2, 7), (1, 9)])
+        + _m(4207, 402, [(4, 6)])
+        # ITIID 4-3 (403)
+        + _m(4302, 403, [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)])
+        + _m(4303, 403, [(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)])
+        + _m(4305, 403, [(0, 3), (1, 3), (2, 3), (3, 3), (4, 3), (4, 5)])
+        + _m(4301, 403, [(0, 5), (2, 5), (0, 6), (1, 9)])
+        + _m(4307, 403, [(1, 5)])
+        + _m(4304, 403, [(3, 5), (2, 6), (4, 6), (1, 7), (2, 7)])
+        + _m(4306, 403, [(1, 6), (3, 6), (0, 7), (3, 7), (4, 7)])
+        # ITIID 7-1 (701)
+        + _m(7101, 701, [(0, 0), (1, 0), (2, 0), (3, 0)])
+        + _m(7106, 701, [(4, 0), (0, 1), (1, 1), (2, 1), (3, 1), (4, 1)])
+        + _m(7102, 701, [(0, 2), (1, 2), (2, 2), (4, 2)])
+        + _m(7105, 701, [(3, 2), (0, 5), (1, 5), (2, 5), (0, 6), (1, 6)])
+        + _m(7104, 701, [(3, 5), (4, 5), (2, 6), (3, 6)])
+        + _m(7103, 701, [(0, 7), (2, 7), (4, 7), (0, 9), (1, 9), (2, 9)])
+        + _m(7107, 701, [(1, 7)])
+        # ITIID 7-2 (702)
+        + _m(7205, 702, [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (4, 1)])
+        + _m(7204, 702, [(0, 1), (1, 1), (2, 1), (3, 1)])
+        + _m(7201, 702, [(0, 2), (1, 2), (2, 2), (3, 2)])
+        + _m(7207, 702, [(4, 2)])
+        + _m(7202, 702, [(0, 5), (1, 5), (3, 5), (4, 5)])
+        + _m(7203, 702, [(2, 5), (0, 7), (1, 7), (3, 7), (4, 7), (3, 9)])
+        + _m(7206, 702, [(0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (2, 7)])
+    )
+
     return {
         "id": "ITIID_2026",
         "name": "ITIID Sep–Dic 2026 (Excel Oficial UPV — 10 Grupos)",
-        "description": "Instancia oficial del Excel ITIID Sep–Dic 2026: 10 grupos (Inmersión, 1-1..1-3, 3-1, 4-1..4-3, 7-1..7-2), 25 docentes con ventanas reales, Franjas de Inglés fijas y bloques compartidos de Posgrado (MI/DC).",
+        "description": "Instancia oficial del Excel ITIID Sep–Dic 2026: 10 grupos (Inmersión, 1-1..1-3, 3-1, 4-1..4-3, 7-1..7-2), 25 docentes con ventanas reales, Franjas de Inglés fijas, bloques Posgrado (MI/DC) y horario manual de coordinación (299 sesiones).",
         "teachers": teachers,
         "rooms": rooms,
         "courses": courses,
         "constraints": [],
         "blocked_slots": blocked_slots,
         "preferences": [],
-        "manual_schedule": None,
+        "manual_schedule": manual_schedule,
     }
 
 

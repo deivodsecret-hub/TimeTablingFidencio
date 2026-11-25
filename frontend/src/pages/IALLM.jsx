@@ -524,21 +524,41 @@ const IALLM = () => {
                                     Evalúa el extractor R5 contra 10 preferencias docentes anotadas manualmente (Ground Truth del equipo).
                                 </p>
                             </div>
-                            <button
-                                onClick={handleEvaluateF1}
-                                disabled={loading}
-                                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium"
-                            >
-                                {loading ? <Loader className="animate-spin" size={16} /> : <BarChart2 size={16} />}
-                                Evaluar Dataset Anotado (P2)
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {f1Result && (
+                                    <button
+                                        onClick={() => {
+                                            setF1Result(null);
+                                            iaStorage.setF1Eval(null);
+                                        }}
+                                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium"
+                                    >
+                                        Limpiar anterior
+                                    </button>
+                                )}
+                                <button
+                                    onClick={handleEvaluateF1}
+                                    disabled={loading}
+                                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium"
+                                >
+                                    {loading ? <Loader className="animate-spin" size={16} /> : <BarChart2 size={16} />}
+                                    Evaluar Dataset Anotado (P2)
+                                </button>
+                            </div>
                         </div>
 
                         {f1Result && (
                             <div className="space-y-5">
-                                {String(f1Result.provider_used || '').startsWith('offline') && (
+                                {String(f1Result.provider_used || '').startsWith('offline') ? (
                                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                                        <strong>Aviso (Modo Respaldo Offline):</strong> Estas métricas provienen del extractor local por reglas. Para las métricas P2 reales de tu informe final, selecciona arriba <strong>Gemini, OpenAI/Groq u Ollama</strong> y vuelve a evaluar.
+                                        <strong>Resultado guardado de Modo Respaldo Offline:</strong>{' '}
+                                        {ollamaStatus.running
+                                            ? `Ya tienes Ollama activo (${llmConfig.model}). Pulsa "Evaluar Dataset Anotado (P2)" para recalcular las métricas reales con tu modelo local.`
+                                            : 'Estas métricas provienen del extractor local por reglas. Para las métricas P2 reales de tu informe, selecciona Ollama, Gemini u OpenAI arriba y vuelve a evaluar.'}
+                                    </div>
+                                ) : (
+                                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+                                        Evaluado con modelo real: <strong>{f1Result.provider_used}</strong>
                                     </div>
                                 )}
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

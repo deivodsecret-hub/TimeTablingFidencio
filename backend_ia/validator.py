@@ -116,10 +116,12 @@ def normalize_instance(raw):
         for r in rooms:
             norm_rooms.append({
                 "id": int(r["id"]),
+                "code": r.get("code", ""),
                 "name": r.get("name", f"Aula {r['id']}"),
                 "capacity": int(r.get("capacity") or 35),
                 "group_id": int(r.get("group_id") or 0),
                 "type": r.get("type", "aula"),
+                "shift": r.get("shift", "matutino"),
             })
     else:
         gids = sorted({c["group_id"] for c in norm_courses})

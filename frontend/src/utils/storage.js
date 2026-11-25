@@ -10,13 +10,30 @@ const STORAGE_KEYS = {
     SCHEDULE_ROOMS: 'utp_schedule_rooms'
 };
 
-// Inicializar estudiantes por cuatrimestre con valores por defecto
+// Inicializar estudiantes por cuatrimestre con valores por defecto (cuatrimestres activos ITIID)
 const getDefaultStudents = () => {
     const students = {};
     for (let i = 1; i <= 10; i++) {
         students[i] = 0;
     }
+    students[1] = 32;
+    students[4] = 32;
+    students[7] = 32;
     return students;
+};
+
+// Enlaza teacher_id desde INITIAL_TEACHERS.assignedCourses cuando no se ha guardado aún en localStorage
+const getInitialCoursesWithTeachers = () => {
+    const teacherByCourse = {};
+    INITIAL_TEACHERS.forEach((t) => {
+        (t.assignedCourses || []).forEach((cid) => {
+            teacherByCourse[cid] = t.id;
+        });
+    });
+    return INITIAL_COURSES.map((c) => ({
+        ...c,
+        teacher_id: c.teacher_id || teacherByCourse[c.id] || null,
+    }));
 };
 
 export const storage = {
@@ -37,10 +54,10 @@ export const storage = {
     getCourses: () => {
         try {
             const stored = localStorage.getItem(STORAGE_KEYS.COURSES);
-            return stored ? JSON.parse(stored) : INITIAL_COURSES;
+            return stored ? JSON.parse(stored) : getInitialCoursesWithTeachers();
         } catch (e) {
             console.error("Error parsing courses from storage", e);
-            return INITIAL_COURSES;
+            return getInitialCoursesWithTeachers();
         }
     },
     setCourses: (data) => localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(data)),
