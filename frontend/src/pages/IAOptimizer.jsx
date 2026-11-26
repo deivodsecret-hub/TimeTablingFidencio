@@ -598,7 +598,7 @@ const IAOptimizer = () => {
                         <StatCard
                             title="Validador Oficial (Duras)"
                             value={val.feasible ? 'FACTIBLE (0)' : `${hv.total} Violaciones`}
-                            subtitle={val.feasible ? 'Cumple todas las reglas duras' : `Doc:${hv.teacher_conflict} Grp:${hv.group_conflict} Disp:${hv.availability} Hrs:${hv.missing_hours}`}
+                            subtitle={val.feasible ? 'Cumple todas las reglas duras' : `Doc:${hv.teacher_conflict} Grp:${hv.group_conflict} Aula:${(hv.room_conflict ?? 0) + (hv.room_assignment ?? 0)} Disp:${hv.availability} Lím. docente:${hv.teacher_daily_limit ?? 0} Hrs:${hv.missing_hours}`}
                             icon={val.feasible ? CheckCircle2 : AlertTriangle}
                             color={val.feasible ? 'bg-green-500' : 'bg-red-500'}
                         />

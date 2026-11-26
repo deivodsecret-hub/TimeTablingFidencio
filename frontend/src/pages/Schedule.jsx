@@ -115,19 +115,16 @@ const Schedule = () => {
 
             const result = await response.json();
 
-            if (result.error) {
-                setError(result.error);
-            } else {
-                setSchedule(result.schedule);
-                storage.setSchedule(result.schedule);
-                setRooms(virtualRooms);
-                storage.setScheduleRooms(virtualRooms);
-                setCourses(expandedCourses);
-
-                if (virtualRooms.length > 0) {
-                    setSelectedRoom(virtualRooms[0].id);
-                }
+            if (!response.ok || result.error || !Array.isArray(result.schedule)) {
+                throw new Error(result.error || 'El servidor no devolvió un horario válido.');
             }
+
+            storage.setSchedule(result.schedule);
+            storage.setScheduleRooms(virtualRooms);
+            setSchedule(result.schedule);
+            setRooms(virtualRooms);
+            setCourses(expandedCourses);
+            setSelectedRoom(virtualRooms[0].id);
         } catch (err) {
             console.error(err);
             setError(err.message || "Error connecting to server.");

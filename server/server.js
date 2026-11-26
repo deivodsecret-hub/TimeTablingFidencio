@@ -23,6 +23,7 @@ const BREAK_HOURS = new Set([4, 8, 13]);
 let activePythonJobs = 0;
 const MAX_CONCURRENT_IA = 2;
 const PYTHON_TIMEOUT_MS = 180000;
+const CLASSIC_TIMEOUT_MS = 15000;
 
 function runPythonIA(payload) {
     return new Promise((resolve, reject) => {
@@ -94,8 +95,8 @@ function runPythonIA(payload) {
             }
         });
 
-        py.stdin.write(JSON.stringify(payload || {}));
-        py.stdin.end();
+        py.stdin.on('error', () => {});
+        py.stdin.end(JSON.stringify(payload || {}));
     });
 }
 
@@ -133,19 +134,18 @@ app.post('/api/solve', (req, res) => {
 
     teachers.forEach(t => {
         if (!t.availability || typeof t.availability !== 'object') return;
-        let hasAnyTrue = false;
+        let configured = false;
         const available = new Set();
         DAYS.forEach((dayName, dIdx) => {
             const dayObj = t.availability[dayName];
             if (!dayObj) return;
             TIME_SLOTS.forEach((slotLabel, hIdx) => {
-                if (!BREAK_HOURS.has(hIdx) && dayObj[slotLabel] === true) {
-                    available.add(dIdx * TIME_SLOTS.length + hIdx);
-                    hasAnyTrue = true;
-                }
+                if (BREAK_HOURS.has(hIdx) || typeof dayObj[slotLabel] !== 'boolean') return;
+                configured = true;
+                if (dayObj[slotLabel]) available.add(dIdx * TIME_SLOTS.length + hIdx);
             });
         });
-        if (hasAnyTrue) {
+        if (configured) {
             for (let d = 0; d < DAYS.length; d++) {
                 for (let h = 0; h < TIME_SLOTS.length; h++) {
                     if (!BREAK_HOURS.has(h)) {
@@ -166,9 +166,16 @@ app.post('/api/solve', (req, res) => {
     let stdoutData = "";
     let stderrData = "";
     let responded = false;
+    const timer = setTimeout(() => {
+        if (responded) return;
+        responded = true;
+        solver.kill();
+        res.status(504).json({ error: 'El motor clásico agotó su límite de 15 segundos.' });
+    }, CLASSIC_TIMEOUT_MS);
 
     const fallbackToPython = async () => {
         if (responded) return;
+        clearTimeout(timer);
         responded = true;
         try {
             const pyRes = await runPythonIA({
@@ -178,7 +185,16 @@ app.post('/api/solve', (req, res) => {
                 time_limit_sec: 5.0,
                 instance: { teachers, rooms, courses, constraints }
             });
-            res.json({ schedule: pyRes.schedule || [] });
+            if (!pyRes.validation?.feasible || !Array.isArray(pyRes.schedule)) {
+                const infeasible = pyRes.status?.startsWith('INFEASIBLE') ||
+                    pyRes.status?.includes('(diagnóstico relajado)');
+                return res.status(422).json({
+                    error: infeasible
+                        ? 'El motor de respaldo no encontró un horario que respete las restricciones.'
+                        : 'El motor de respaldo no produjo un horario validado.'
+                });
+            }
+            res.json({ schedule: pyRes.schedule });
         } catch (err) {
             res.status(err.status || 500).json({ error: 'Solver failed', details: err.message });
         }
@@ -201,6 +217,7 @@ app.post('/api/solve', (req, res) => {
     });
 
     solver.on('close', (code) => {
+        clearTimeout(timer);
         if (responded) return;
         // Fallback transparently when MinGW DLLs are missing on Windows (0xC0000135)
         if (code === -1073741515 || code === 3221225781) {
@@ -215,8 +232,14 @@ app.post('/api/solve', (req, res) => {
         }
 
         try {
-            responded = true;
             const result = JSON.parse(stdoutData);
+            responded = true;
+            if (result.error === 'No solution found') {
+                return res.status(422).json({ error: 'El motor clásico determinó que no hay un horario viable.' });
+            }
+            if (!Array.isArray(result.schedule)) {
+                return res.status(502).json({ error: 'El motor clásico devolvió un horario inválido.' });
+            }
             res.json(result);
         } catch (e) {
             responded = true;

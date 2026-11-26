@@ -301,6 +301,8 @@ def export_schedule_excel_b64(raw_instance, schedule, validation=None):
             ("  - Traslape Docente", hv.get("teacher_conflict", 0)),
             ("  - Traslape Grupo", hv.get("group_conflict", 0)),
             ("  - Traslape Aula", hv.get("room_conflict", 0)),
+            ("  - Asignación de Aula", hv.get("room_assignment", 0)),
+            ("  - Límite Diario Docente", hv.get("teacher_daily_limit", 0)),
             ("  - Disponibilidad / Bloqueos", hv.get("availability", 0)),
             ("  - Horas No Cubiertas", hv.get("missing_hours", 0)),
             ("Penalización Blanda Total", validation.get("soft_penalty", 0)),

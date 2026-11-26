@@ -783,6 +783,8 @@ const IALLM = () => {
                                             <div className="bg-white p-2.5 rounded border">Traslape Grupo: <strong>{hv.group_conflict}</strong></div>
                                             <div className="bg-white p-2.5 rounded border">Disponibilidad/Receso: <strong>{hv.availability}</strong></div>
                                             <div className="bg-white p-2.5 rounded border">Horas Incompletas: <strong>{hv.missing_hours}</strong></div>
+                                            <div className="bg-white p-2.5 rounded border">Conflictos de aula <strong>{(hv.room_conflict ?? 0) + (hv.room_assignment ?? 0)}</strong></div>
+                                            <div className="bg-white p-2.5 rounded border">Límite diario docente <strong>{hv.teacher_daily_limit ?? 0}</strong></div>
                                         </div>
                                         {v.conflicts_detail?.length > 0 && (
                                             <div className="text-xs text-red-700 bg-red-50 p-3 rounded border border-red-100 space-y-1 max-h-40 overflow-y-auto">

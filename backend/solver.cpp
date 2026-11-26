@@ -77,39 +77,48 @@ string get_json_value(string json, string key) {
 // DECISION: We will implement a "Simplified Protocol" reader.
 // Node.js will convert JSON to:
 // TEACHER id name
-// ROOM id name capacity
-// COURSE id name teacher_id students duration
+// ROOM id name capacity group_id
+// COURSE id name teacher_id students weekly_sessions group_id
 // CONSTRAINT teacher_id slot_id
 // END
 
-void parse_input() {
-    string type;
-    while (cin >> type) {
+bool parse_input() {
+    string line;
+    while (getline(cin, line)) {
+        istringstream row(line);
+        string type;
+        if (!(row >> type)) continue;
         if (type == "TEACHER") {
             Teacher t;
-            cin >> t.id >> t.name;
+            if (!(row >> t.id >> t.name)) return false;
             teachers.push_back(t);
         } else if (type == "ROOM") {
             Room r;
-            cin >> r.id >> r.name >> r.capacity >> r.group_id;
+            if (!(row >> r.id >> r.name >> r.capacity >> r.group_id)) return false;
             rooms.push_back(r);
         } else if (type == "COURSE") {
             Course c;
-            cin >> c.id >> c.name >> c.teacher_id >> c.students >> c.weekly_sessions >> c.group_id;
+            if (!(row >> c.id >> c.name >> c.teacher_id >> c.students >> c.weekly_sessions >> c.group_id)) {
+                return false;
+            }
             courses.push_back(c);
         } else if (type == "CONSTRAINT") {
             int t_id, slot;
-            cin >> t_id >> slot;
+            if (!(row >> t_id >> slot)) return false;
             for (auto& t : teachers) {
                 if (t.id == t_id) {
                     t.unavailable_slots.push_back(slot);
                     break;
                 }
             }
-        } else if (type == "END") {
-            break;
+        } else if (type != "END") {
+            return false;
         }
+        string extra;
+        if (row >> extra) return false;
+        if (type == "END") return true;
     }
+    return false;
 }
 
 // --- Backtracking Solver ---
@@ -240,7 +249,10 @@ void print_schedule() {
 }
 
 int main() {
-    parse_input();
+    if (!parse_input()) {
+        cerr << "Invalid solver input" << endl;
+        return 1;
+    }
     if (solve(0, 0)) {
         print_schedule();
     } else {

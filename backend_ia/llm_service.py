@@ -721,6 +721,10 @@ Reporte del validador:
             lines.append(f"- **Traslapes de grupo:** {hv['group_conflict']} casos donde un grupo tiene dos materias simultáneas.")
         if hv.get("room_conflict"):
             lines.append(f"- **Traslapes de aula:** {hv['room_conflict']} colisiones de espacio físico.")
+        if hv.get("room_assignment"):
+            lines.append(f"- **Asignaciones de aula inválidas:** {hv['room_assignment']} sesiones incumplen los requisitos del aula.")
+        if hv.get("teacher_daily_limit"):
+            lines.append(f"- **Límite diario docente:** {hv['teacher_daily_limit']} sesiones por encima del máximo diario obligatorio.")
         if hv.get("availability"):
             lines.append(f"- **Disponibilidad / Recursos compartidos / Recesos:** {hv['availability']} sesiones fuera de la disponibilidad permitida.")
         if hv.get("missing_hours"):

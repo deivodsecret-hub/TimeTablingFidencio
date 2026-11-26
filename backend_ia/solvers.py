@@ -15,56 +15,52 @@ from validator import (
     SCENARIO_WEIGHTS,
     normalize_instance,
     preference_forbidden_slots,
+    room_assignment_problem,
     validate_schedule,
 )
 
 
-def _get_course_room_map(inst):
-    """Maps each course_id to its room_id: prefers group match, else balances across shared rooms matching lab/capacity."""
-    rooms_by_group = {}
-    shared_rooms = []
-    for r in inst["rooms"]:
-        if r["group_id"]:
-            rooms_by_group.setdefault(r["group_id"], r["id"])
-        else:
-            shared_rooms.append(r)
-    fallback_rooms = shared_rooms or inst["rooms"] or [{"id": 1, "capacity": 35, "type": "aula"}]
-    room_load = defaultdict(int)
-    mapping = {}
-    for c in inst["courses"]:
-        if c["group_id"] in rooms_by_group:
-            mapping[c["id"]] = rooms_by_group[c["group_id"]]
-        else:
-            candidates = [
-                r for r in fallback_rooms
-                if r.get("capacity", 35) >= c.get("students", 0)
-                and (not c.get("requires_lab") or r.get("type") == "lab")
-            ] or fallback_rooms
-            chosen = min(candidates, key=lambda r: room_load[r["id"]])
-            room_load[chosen["id"]] += c.get("weekly_sessions", 1)
-            mapping[c["id"]] = chosen["id"]
-    return mapping
-
-
-def _get_valid_slots_per_course(inst, room_map):
+def _get_course_domains(inst):
+    """Choose a compatible room per course and collect its strict and diagnostic slots."""
     t_unavail = {int(k): set(v) for k, v in inst["teacher_unavailable"].items()}
     r_blocked = {int(k): set(v) for k, v in inst["room_blocked"].items()}
-    rooms_by_id = {r["id"]: r for r in inst.get("rooms", [])}
-    domains = {}
-    for c in inst["courses"]:
-        tid = c["teacher_id"]
-        rid = room_map[c["id"]]
-        bad = set()
-        if tid:
-            bad |= t_unavail.get(tid, set())
-        bad |= r_blocked.get(rid, set())
-        allowed_h = rooms_by_id.get(rid, {}).get("allowed_hours")
-        allowed_h_set = set(allowed_h) if allowed_h else None
-        domains[c["id"]] = [
-            s for s in TEACHABLE_SLOTS
-            if s not in bad and (allowed_h_set is None or (s % SLOTS_PER_DAY) in allowed_h_set)
+    room_slots = {}
+    rooms_by_group = defaultdict(list)
+    for room in inst["rooms"]:
+        rooms_by_group[room["group_id"]].append(room)
+        allowed_hours = room.get("allowed_hours")
+        room_slots[room["id"]] = [
+            slot for slot in TEACHABLE_SLOTS
+            if allowed_hours is None or slot % SLOTS_PER_DAY in allowed_hours
         ]
-    return domains
+
+    room_map = {}
+    domains = {}
+    room_load = defaultdict(int)
+    for course in inst["courses"]:
+        cid = course["id"]
+        unavailable = t_unavail.get(course["teacher_id"], set())
+        required = course["weekly_sessions"]
+        group_rooms = rooms_by_group.get(course["group_id"], [])
+        available_rooms = group_rooms + rooms_by_group.get(0, []) or inst["rooms"]
+        candidates = []
+        for room in available_rooms:
+            rid = room["id"]
+            if not room_slots[rid] or room_assignment_problem(course, room):
+                continue
+            blocked = r_blocked.get(rid, set())
+            slots = [slot for slot in room_slots[rid] if slot not in unavailable and slot not in blocked]
+            group_rank = 0 if room["group_id"] == course["group_id"] else (1 if not room["group_id"] else 2)
+            score = (max(0, required - len(slots)), group_rank, room_load[rid])
+            candidates.append((score, rid, slots))
+        if candidates:
+            _, rid, slots = min(candidates, key=lambda candidate: candidate[0])
+            room_map[cid] = rid
+            domains[cid] = slots
+            room_load[rid] += required
+        else:
+            domains[cid] = []
+    return room_map, domains, room_slots
 
 
 # ==============================================================================
@@ -73,10 +69,7 @@ def _get_valid_slots_per_course(inst, room_map):
 
 def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_schedule=None, relaxed_avail=False):
     weights = SCENARIO_WEIGHTS.get(scenario, SCENARIO_WEIGHTS["C"])
-    room_map = _get_course_room_map(inst)
-    domains = _get_valid_slots_per_course(inst, room_map)
-    t_unavail = {int(k): set(v) for k, v in inst["teacher_unavailable"].items()}
-    r_blocked = {int(k): set(v) for k, v in inst["room_blocked"].items()}
+    room_map, domains, room_slots = _get_course_domains(inst)
 
     model = cp_model.CpModel()
     courses = inst["courses"]
@@ -88,15 +81,12 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
     avail_penalties = []
     for c in courses:
         cid = c["id"]
-        tid = c["teacher_id"]
-        rid = room_map[cid]
-        allowed = TEACHABLE_SLOTS if relaxed_avail else domains[cid]
+        allowed = room_slots.get(room_map.get(cid), []) if relaxed_avail else domains[cid]
         for s in allowed:
             var = model.NewBoolVar(f"x_{cid}_{s}")
             x[(cid, s)] = var
-            if relaxed_avail:
-                if (tid and s in t_unavail.get(tid, set())) or (s in r_blocked.get(rid, set())):
-                    avail_penalties.append(var)
+            if relaxed_avail and s not in domains[cid]:
+                avail_penalties.append(var)
 
     # Hard 1: Exact weekly sessions per course (or slack if relaxed)
     missing_slacks = []
@@ -124,7 +114,8 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
     # Hard 3: No room overlap (when multiple groups share a physical room)
     courses_by_room = defaultdict(list)
     for c in courses:
-        courses_by_room[room_map[c["id"]]].append(c)
+        if c["id"] in room_map:
+            courses_by_room[room_map[c["id"]]].append(c)
     for rid, clist in courses_by_room.items():
         if len({c["group_id"] for c in clist}) > 1:
             for s in TEACHABLE_SLOTS:
@@ -143,6 +134,17 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
                 v = [x[(c["id"], s)] for c in clist if (c["id"], s) in x]
                 if len(v) > 1:
                     model.Add(sum(v) <= 1)
+
+    # Hard 5: Respect each teacher's mandatory daily session limit.
+    for tid, limit in inst["teacher_daily_limits"].items():
+        if tid in courses_by_teacher:
+            for day in range(NUM_DAYS):
+                day_slots = [day * SLOTS_PER_DAY + h for h in TEACHABLE_HOURS]
+                variables = [
+                    x[(c["id"], slot)] for c in courses_by_teacher[tid]
+                    for slot in day_slots if (c["id"], slot) in x
+                ]
+                model.Add(sum(variables) <= limit)
 
     # --- Soft Objectives ---
     obj_terms = []
@@ -394,11 +396,14 @@ def _build_session_list(inst, room_map):
     """Expands each course into individual session units to schedule."""
     sessions = []
     for c in inst["courses"]:
+        if c["id"] not in room_map:
+            continue
         req = min(c["weekly_sessions"], len(TEACHABLE_SLOTS))
         for k in range(req):
             sessions.append({
                 "course_id": c["id"],
                 "teacher_id": c["teacher_id"],
+                "teacher_daily_limit": inst["teacher_daily_limits"].get(c["teacher_id"], math.inf),
                 "group_id": c["group_id"],
                 "room_id": room_map[c["id"]],
                 "weekly_sessions": req,
@@ -445,6 +450,8 @@ def _fast_score(assign, sessions, domains_set, pref_bad_by_teacher, weights, ori
         g_day_pos[(gid, d)].append(pos)
         if tid:
             t_day_pos[(tid, d)].append(pos)
+            if len(t_day_pos[(tid, d)]) > s_info["teacher_daily_limit"]:
+                hard += 1
         c_day_cnt[(cid, d)] += 1
 
     student_gaps = 0
@@ -529,6 +536,7 @@ def _construct_mrv(sessions, domains, rng, jitter=0.0):
     g_busy = set()
     r_busy = set()
     c_day = defaultdict(int)
+    t_day = defaultdict(int)
     g_day_hours = defaultdict(list)
 
     for idx in order:
@@ -554,6 +562,8 @@ def _construct_mrv(sessions, domains, rng, jitter=0.0):
             d = slot // SLOTS_PER_DAY
             h = slot % SLOTS_PER_DAY
             pos = HOUR_TO_POS.get(h, 0)
+            if tid and t_day[(tid, d)] >= s_info["teacher_daily_limit"]:
+                sc += 10000
             if c_day[(cid, d)] >= s_info["max_per_day"]:
                 sc += 25
             # Encourage compact days (near existing group classes)
@@ -574,6 +584,8 @@ def _construct_mrv(sessions, domains, rng, jitter=0.0):
         g_busy.add((gid, best_slot))
         r_busy.add((rid, best_slot))
         d = best_slot // SLOTS_PER_DAY
+        if tid:
+            t_day[(tid, d)] += 1
         c_day[(cid, d)] += 1
         g_day_hours[(gid, d)].append(HOUR_TO_POS.get(best_slot % SLOTS_PER_DAY, 0))
 
@@ -668,10 +680,13 @@ def solve_genetic(
     t0 = time.perf_counter()
     inst = normalize_instance(raw_instance)
     weights = SCENARIO_WEIGHTS.get(scenario, SCENARIO_WEIGHTS["C"])
-    room_map = _get_course_room_map(inst)
-    domains = _get_valid_slots_per_course(inst, room_map)
+    room_map, domains, room_slots = _get_course_domains(inst)
     domains_set = {k: set(v) for k, v in domains.items()}
     sessions = _build_session_list(inst, room_map)
+    diagnostic_domains = {
+        cid: domains[cid] or room_slots[rid] for cid, rid in room_map.items()
+    }
+    missing_hours = sum(c["weekly_sessions"] for c in inst["courses"]) - len(sessions)
     pref_map = _extract_pref_map(inst)
 
     orig_slot_map = None
@@ -702,8 +717,8 @@ def solve_genetic(
         pop = []
         for p in range(population_size):
             jitter = 0.2 + (p / max(1, population_size)) * 3.0
-            ind = _construct_mrv(sessions, domains, rng, jitter=jitter)
-            ind = _repair_conflicts(ind, sessions, domains, domains_set, rng, max_steps=15)
+            ind = _construct_mrv(sessions, diagnostic_domains, rng, jitter=jitter)
+            ind = _repair_conflicts(ind, sessions, diagnostic_domains, domains_set, rng, max_steps=15)
             pop.append(ind)
 
         scored = [(ind, _fast_score(ind, sessions, domains_set, pref_map, weights, orig_slot_map)) for ind in pop]
@@ -724,11 +739,11 @@ def solve_genetic(
                 # Mutation
                 for i in range(len(sessions)):
                     if rng.random() < mutation_rate:
-                        dom = domains[sessions[i]["course_id"]] or TEACHABLE_SLOTS
+                        dom = diagnostic_domains[sessions[i]["course_id"]]
                         child[i] = rng.choice(dom)
 
                 # Lightweight repair on offspring
-                child = _repair_conflicts(child, sessions, domains, domains_set, rng, max_steps=10)
+                child = _repair_conflicts(child, sessions, diagnostic_domains, domains_set, rng, max_steps=10)
                 new_pop.append(child)
 
             scored = [(ind, _fast_score(ind, sessions, domains_set, pref_map, weights, orig_slot_map)) for ind in new_pop]
@@ -738,7 +753,7 @@ def solve_genetic(
         run_ms = round((time.perf_counter() - rt0) * 1000, 1)
         runs_summary.append({
             "run": run_idx + 1,
-            "hard_violations": hard_v,
+            "hard_violations": hard_v + missing_hours,
             "soft_penalty": soft_v,
             "elapsed_ms": run_ms,
         })
@@ -783,10 +798,13 @@ def solve_local_search(
     t0 = time.perf_counter()
     inst = normalize_instance(raw_instance)
     weights = SCENARIO_WEIGHTS.get(scenario, SCENARIO_WEIGHTS["C"])
-    room_map = _get_course_room_map(inst)
-    domains = _get_valid_slots_per_course(inst, room_map)
+    room_map, domains, room_slots = _get_course_domains(inst)
     domains_set = {k: set(v) for k, v in domains.items()}
     sessions = _build_session_list(inst, room_map)
+    diagnostic_domains = {
+        cid: domains[cid] or room_slots[rid] for cid, rid in room_map.items()
+    }
+    missing_hours = sum(c["weekly_sessions"] for c in inst["courses"]) - len(sessions)
     pref_map = _extract_pref_map(inst)
 
     orig_slot_map = None
@@ -810,15 +828,15 @@ def solve_local_search(
     for r in range(restarts):
         rng = random.Random(101 + r * 53)
         # Phase 1: MRV constructive + repair
-        cur = _construct_mrv(sessions, domains, rng, jitter=0.3 + r * 0.6)
-        cur = _repair_conflicts(cur, sessions, domains, domains_set, rng, max_steps=60)
+        cur = _construct_mrv(sessions, diagnostic_domains, rng, jitter=0.3 + r * 0.6)
+        cur = _repair_conflicts(cur, sessions, diagnostic_domains, domains_set, rng, max_steps=60)
         cur_h, cur_s, cur_cost = _fast_score(cur, sessions, domains_set, pref_map, weights, orig_slot_map)
 
         # Phase 2: Stochastic Hill Climbing (single-slot moves + pairwise swaps)
         for _ in range(max_iterations):
             idx = rng.randrange(len(sessions))
             si = sessions[idx]
-            dom = domains[si["course_id"]] or TEACHABLE_SLOTS
+            dom = diagnostic_domains[si["course_id"]]
             old_slot = cur[idx]
 
             # Try a small neighborhood sample of moves
@@ -849,7 +867,7 @@ def solve_local_search(
                         else:
                             cur[idx], cur[idx2] = s1, s2
 
-        restart_logs.append({"restart": r + 1, "hard_violations": cur_h, "soft_penalty": cur_s})
+        restart_logs.append({"restart": r + 1, "hard_violations": cur_h + missing_hours, "soft_penalty": cur_s})
         if cur_cost < best_cost:
             best_cost = cur_cost
             best_assign = list(cur)

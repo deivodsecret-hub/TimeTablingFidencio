@@ -72,6 +72,16 @@ def slot_label(slot):
     return f"{day_name} {time_name}"
 
 
+def room_assignment_problem(course, room):
+    if room is None:
+        return "el aula no existe"
+    if room["capacity"] < course["students"]:
+        return f"el aula {room['name']} tiene {room['capacity']} lugares para {course['students']} alumnos"
+    if course["requires_lab"] and room["type"] != "lab":
+        return f"el aula {room['name']} no es un laboratorio"
+    return None
+
+
 def normalize_instance(raw):
     """Normalizes data coming from original UPV storage OR built-in instances / Excel."""
     teachers = raw.get("teachers", [])
@@ -114,11 +124,12 @@ def normalize_instance(raw):
     norm_rooms = []
     if rooms:
         for r in rooms:
+            capacity = r.get("capacity")
             norm_rooms.append({
                 "id": int(r["id"]),
                 "code": r.get("code", ""),
                 "name": r.get("name", f"Aula {r['id']}"),
-                "capacity": int(r.get("capacity") or 35),
+                "capacity": int(capacity) if capacity not in (None, "") else 35,
                 "group_id": int(r.get("group_id") or 0),
                 "type": r.get("type", "aula"),
                 "shift": r.get("shift", "matutino"),
@@ -141,7 +152,7 @@ def normalize_instance(raw):
         tid = int(t["id"])
         avail = t.get("availability")
         if isinstance(avail, dict) and len(avail) > 0:
-            has_any_true = False
+            configured = False
             available_set = set()
             for d_idx, d_name in enumerate(DAYS):
                 day_dict = avail.get(d_name, {})
@@ -149,13 +160,13 @@ def normalize_instance(raw):
                     for h_idx, t_str in enumerate(TIME_SLOTS):
                         if h_idx in BREAK_HOURS:
                             continue
-                        if day_dict.get(t_str) is True:
-                            available_set.add(d_idx * SLOTS_PER_DAY + h_idx)
-                            has_any_true = True
-            if has_any_true:
-                for s in TEACHABLE_SLOTS:
-                    if s not in available_set:
-                        teacher_unavailable[tid].add(s)
+                        cell = day_dict.get(t_str)
+                        if isinstance(cell, bool):
+                            configured = True
+                            if cell:
+                                available_set.add(d_idx * SLOTS_PER_DAY + h_idx)
+            if configured:
+                teacher_unavailable[tid].update(set(TEACHABLE_SLOTS) - available_set)
 
     for con in constraints or []:
         tid = int(con.get("teacher_id", 0))
@@ -180,14 +191,17 @@ def normalize_instance(raw):
             else:
                 room_blocked[int(b["id"])].add(slot)
 
-    # Apply hard preferences into teacher_unavailable as well
+    # Hard preferences can restrict individual slots or the teacher's daily load.
     soft_preferences = []
+    teacher_daily_limits = {}
     for p in preferences or []:
         if p.get("hard") is True:
             tid = int(p.get("teacher_id", 0))
-            if tid:
-                for s in preference_forbidden_slots(p):
-                    teacher_unavailable[tid].add(s)
+            if tid and p.get("type") == "max_daily_hours":
+                limit = max(0, int(p.get("max_hours", 4)))
+                teacher_daily_limits[tid] = min(teacher_daily_limits.get(tid, limit), limit)
+            elif tid:
+                teacher_unavailable[tid].update(preference_forbidden_slots(p))
         else:
             soft_preferences.append(p)
 
@@ -198,6 +212,7 @@ def normalize_instance(raw):
         "courses": norm_courses,
         "teacher_unavailable": {k: sorted(v) for k, v in teacher_unavailable.items()},
         "room_blocked": {k: sorted(v) for k, v in room_blocked.items()},
+        "teacher_daily_limits": teacher_daily_limits,
         "blocked_slots": blocked_slots or [],
         "preferences": soft_preferences,
         "all_preferences": preferences or [],
@@ -257,6 +272,7 @@ def validate_schedule(raw_instance, schedule, scenario="C", original_schedule=No
     rooms_by_id = {r["id"]: r for r in inst["rooms"]}
     t_unavail = {int(k): set(v) for k, v in inst["teacher_unavailable"].items()}
     r_blocked = {int(k): set(v) for k, v in inst["room_blocked"].items()}
+    daily_limits = {int(k): v for k, v in inst.get("teacher_daily_limits", {}).items()}
 
     teacher_slot_map = defaultdict(list)
     group_slot_map = defaultdict(list)
@@ -268,6 +284,7 @@ def validate_schedule(raw_instance, schedule, scenario="C", original_schedule=No
     teacher_assigned_slots = defaultdict(set)
 
     availability_violations = 0
+    room_assignment_violations = 0
     conflicts_detail = []
 
     for item in schedule or []:
@@ -309,6 +326,17 @@ def validate_schedule(raw_instance, schedule, scenario="C", original_schedule=No
             conflicts_detail.append({
                 "type": "availability",
                 "message": f"Disponibilidad violada: {tname} no está disponible en {slot_label(slot)} ({course['name']})."
+            })
+
+        room = rooms_by_id.get(rid)
+        room_problem = room_assignment_problem(course, room)
+        if room_problem is None and room.get("allowed_hours") is not None and h not in room["allowed_hours"]:
+            room_problem = f"el aula {room['name']} no permite la franja {slot_label(slot)}"
+        if room_problem:
+            room_assignment_violations += 1
+            conflicts_detail.append({
+                "type": "room_assignment",
+                "message": f"{course['name']} (aula {rid}): {room_problem}."
             })
 
         if slot in r_blocked.get(rid, set()):
@@ -376,7 +404,20 @@ def validate_schedule(raw_instance, schedule, scenario="C", original_schedule=No
                 "message": f"Horas incompletas en {c['name']} (Grupo {c['group_id']}): {assigned}/{req} sesiones asignadas."
             })
 
-    total_hard = teacher_conflicts + group_conflicts + room_conflicts + availability_violations + missing_hours
+    teacher_daily_violations = 0
+    for tid, limit in daily_limits.items():
+        for day, positions in teacher_day_hours[tid].items():
+            if len(positions) > limit:
+                teacher_daily_violations += len(positions) - limit
+                conflicts_detail.append({
+                    "type": "teacher_daily_limit",
+                    "message": f"{teachers_by_id.get(tid, tid)} tiene {len(positions)} sesiones el {DAYS[day]} y su máximo es {limit}."
+                })
+
+    total_hard = (
+        teacher_conflicts + group_conflicts + room_conflicts + room_assignment_violations
+        + availability_violations + teacher_daily_violations + missing_hours
+    )
 
     # --- Soft Quality Metrics ---
     student_gaps = 0
@@ -469,7 +510,9 @@ def validate_schedule(raw_instance, schedule, scenario="C", original_schedule=No
             "teacher_conflict": teacher_conflicts,
             "group_conflict": group_conflicts,
             "room_conflict": room_conflicts,
+            "room_assignment": room_assignment_violations,
             "availability": availability_violations,
+            "teacher_daily_limit": teacher_daily_violations,
             "missing_hours": missing_hours,
             "total": total_hard,
         },

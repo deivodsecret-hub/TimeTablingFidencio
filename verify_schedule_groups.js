@@ -1,4 +1,5 @@
 const http = require('http');
+const assert = require('node:assert/strict');
 
 // Emulate frontend logic
 const students = { 3: 70 }; // 70 students in quarter 3 -> should produce 2 groups
@@ -10,7 +11,7 @@ const courses = [
 // Generate groups logic (simplified from frontend)
 const virtualRooms = [];
 const expandedCourses = [];
-const numGroups = Math.ceil(70 / 35); // 2
+const numGroups = Math.ceil(students[3] / 35); // 2
 
 for (let i = 1; i <= numGroups; i++) {
     const gid = 300 + i;
@@ -27,23 +28,35 @@ const data = {
     constraints: []
 };
 
-console.log("Sending data:", JSON.stringify(data, null, 2));
-
+const body = JSON.stringify(data);
 const options = {
     hostname: 'localhost',
     port: 3001,
     path: '/api/solve',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': JSON.stringify(data).length }
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
 };
 
 const req = http.request(options, (res) => {
     let responseData = '';
     res.on('data', chunk => responseData += chunk);
     res.on('end', () => {
-        console.log('Status:', res.statusCode);
-        console.log('Response:', responseData);
+        assert.equal(res.statusCode, 200, responseData);
+        const { schedule } = JSON.parse(responseData);
+        assert.ok(Array.isArray(schedule), responseData);
+        assert.equal(schedule.length, 8);
+        for (const course of expandedCourses) {
+            const assignments = schedule.filter(item => item.course_id === course.id);
+            assert.equal(assignments.length, course.weekly_sessions);
+            assert.ok(assignments.every(item => item.room_id === course.group_id));
+        }
+        for (const teacher of data.teachers) {
+            const courseIds = new Set(expandedCourses.filter(course => course.teacher_id === teacher.id).map(course => course.id));
+            const slots = schedule.filter(item => courseIds.has(item.course_id)).map(item => item.start_slot);
+            assert.equal(new Set(slots).size, slots.length);
+        }
+        console.log('Verificados dos grupos y ocho sesiones sin traslapes docentes.');
     });
 });
-req.write(JSON.stringify(data));
-req.end();
+req.setTimeout(35000, () => req.destroy(new Error('Tiempo de espera agotado')));
+req.end(body);
