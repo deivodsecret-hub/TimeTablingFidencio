@@ -1,8 +1,30 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const { spawn } = require('child_process');
+const fs = require('fs');
+const http = require('http');
 const path = require('path');
 const cors = require('cors');
+
+function ensureLocalOllama() {
+    const req = http.get('http://127.0.0.1:11434/api/tags', { timeout: 1500 }, (res) => {
+        res.resume();
+    });
+    req.on('error', () => {
+        const ollamaExe = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe');
+        if (fs.existsSync(ollamaExe)) {
+            const child = spawn(ollamaExe, ['serve'], {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: true,
+                env: { ...process.env, OLLAMA_HOST: '127.0.0.1:11434' }
+            });
+            child.unref();
+            console.log('Ollama local iniciado automáticamente en http://127.0.0.1:11434');
+        }
+    });
+}
+ensureLocalOllama();
 
 const app = express();
 const PORT = 3001;
@@ -23,7 +45,7 @@ const BREAK_HOURS = new Set([4, 8, 13]);
 let activePythonJobs = 0;
 const MAX_CONCURRENT_IA = 2;
 const PYTHON_TIMEOUT_MS = 180000;
-const CLASSIC_TIMEOUT_MS = 15000;
+const CLASSIC_TIMEOUT_MS = 6000;
 
 function runPythonIA(payload) {
     return new Promise((resolve, reject) => {
@@ -168,9 +190,9 @@ app.post('/api/solve', (req, res) => {
     let responded = false;
     const timer = setTimeout(() => {
         if (responded) return;
-        responded = true;
+        console.warn(`Classic solver exceeded ${CLASSIC_TIMEOUT_MS}ms; switching to Python CP-SAT fallback.`);
         solver.kill();
-        res.status(504).json({ error: 'El motor clásico agotó su límite de 15 segundos.' });
+        fallbackToPython();
     }, CLASSIC_TIMEOUT_MS);
 
     const fallbackToPython = async () => {
@@ -182,7 +204,7 @@ app.post('/api/solve', (req, res) => {
                 action: 'solve',
                 method: 'cpsat',
                 scenario: 'C',
-                time_limit_sec: 5.0,
+                time_limit_sec: 10.0,
                 instance: { teachers, rooms, courses, constraints }
             });
             if (!pyRes.validation?.feasible || !Array.isArray(pyRes.schedule)) {
@@ -194,7 +216,12 @@ app.post('/api/solve', (req, res) => {
                         : 'El motor de respaldo no produjo un horario validado.'
                 });
             }
-            res.json({ schedule: pyRes.schedule });
+            res.json({
+                schedule: pyRes.schedule,
+                courses: pyRes.patched_instance?.courses || courses,
+                reassigned_teachers: pyRes.reassigned_teachers || [],
+                unassigned_courses: pyRes.unassigned_courses || []
+            });
         } catch (err) {
             res.status(err.status || 500).json({ error: 'Solver failed', details: err.message });
         }
@@ -233,14 +260,19 @@ app.post('/api/solve', (req, res) => {
 
         try {
             const result = JSON.parse(stdoutData);
-            responded = true;
             if (result.error === 'No solution found') {
+                const canReassign = courses.some((c) => !c.teacher_id || (Array.isArray(c.teacher_ids) && c.teacher_ids.length > 1));
+                if (canReassign) {
+                    return fallbackToPython();
+                }
+                responded = true;
                 return res.status(422).json({ error: 'El motor clásico determinó que no hay un horario viable.' });
             }
+            responded = true;
             if (!Array.isArray(result.schedule)) {
                 return res.status(502).json({ error: 'El motor clásico devolvió un horario inválido.' });
             }
-            res.json(result);
+            res.json({ ...result, courses });
         } catch (e) {
             responded = true;
             console.error("Failed to parse solver output:", stdoutData);

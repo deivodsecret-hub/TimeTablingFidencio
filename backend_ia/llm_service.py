@@ -97,36 +97,79 @@ def _strip_accents(s):
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
-def check_ollama_status(base_url="http://localhost:11434"):
-    """Checks if local Ollama server is running and lists installed models."""
-    url = (base_url or "http://localhost:11434").rstrip("/")
+import os
+import subprocess
+
+def _try_autostart_ollama():
+    """On Windows, starts `ollama.exe serve` in background if installed and not yet listening."""
+    if os.name != "nt":
+        return False
+    local_app = os.environ.get("LOCALAPPDATA", "")
+    ollama_exe = os.path.join(local_app, "Programs", "Ollama", "ollama.exe")
+    if not os.path.isfile(ollama_exe):
+        return False
     try:
-        resp = requests.get(f"{url}/api/tags", timeout=3)
-        resp.raise_for_status()
-        data = resp.json()
-        models = [m.get("name") for m in data.get("models", []) if m.get("name")]
-        recommended = None
-        for pref in ("qwen2.5:3b", "qwen2.5", "llama3.2", "mistral", "gemma"):
-            match = next((m for m in models if pref in m.lower()), None)
-            if match:
-                recommended = match
-                break
-        if not recommended and models:
-            recommended = models[0]
-        return {
-            "running": True,
-            "base_url": url,
-            "models": models,
-            "recommended": recommended,
-        }
-    except Exception as exc:
-        return {
-            "running": False,
-            "base_url": url,
-            "models": [],
-            "recommended": None,
-            "error": str(exc),
-        }
+        env = os.environ.copy()
+        env.setdefault("OLLAMA_HOST", "127.0.0.1:11434")
+        subprocess.Popen(
+            [ollama_exe, "serve"],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        time.sleep(1.8)
+        return True
+    except Exception:
+        return False
+
+
+def check_ollama_status(base_url="http://127.0.0.1:11434", autostart=True):
+    """Checks if local Ollama server is running (auto-starting it if installed) and lists local models."""
+    url = (base_url or "http://127.0.0.1:11434").rstrip("/")
+    started_here = False
+    last_err = ""
+    for attempt in range(8):
+        try:
+            resp = requests.get(f"{url}/api/tags", timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+            recommended = None
+            for pref in ("qwen2.5:3b", "qwen2.5", "llama3.2", "mistral", "gemma"):
+                match = next((m for m in models if pref in m.lower()), None)
+                if match:
+                    recommended = match
+                    break
+            if not recommended and models:
+                recommended = models[0]
+            return {
+                "running": True,
+                "base_url": url,
+                "models": models,
+                "recommended": recommended or "qwen2.5:3b",
+            }
+        except Exception as exc:
+            last_err = str(exc)
+            if attempt == 0 and autostart and ("127.0.0.1" in url or "localhost" in url):
+                if _try_autostart_ollama():
+                    started_here = True
+                    continue
+            if started_here and attempt < 7:
+                time.sleep(1.5)
+                continue
+            if attempt == 0 and "timed out" in last_err.lower():
+                time.sleep(1.5)
+                continue
+            break
+    return {
+        "running": False,
+        "base_url": url,
+        "models": [],
+        "recommended": "qwen2.5:3b",
+        "error": last_err,
+    }
 
 
 def _extract_list_from_parsed(parsed, candidate_keys):
@@ -147,72 +190,41 @@ def _extract_list_from_parsed(parsed, candidate_keys):
 
 
 def _call_llm(prompt, llm_config=None, expect_json=False, max_tokens=1024):
-    """Calls Gemini, OpenAI-compatible API, or Ollama local. Returns (text, provider_used, error_msg)."""
+    """Calls local Ollama exclusively (no external cloud APIs). Returns (text, provider_used, error_msg)."""
     cfg = llm_config or {}
-    provider = cfg.get("provider", "offline")
-
-    if provider == "offline":
-        return None, "offline", None
+    base_url = (cfg.get("base_url") or "http://127.0.0.1:11434").rstrip("/")
+    if not base_url.startswith("http://127.0.0.1") and not base_url.startswith("http://localhost"):
+        base_url = "http://127.0.0.1:11434"
 
     try:
-        if provider == "ollama":
-            base_url = (cfg.get("base_url") or "http://127.0.0.1:11434").rstrip("/")
-            model = (cfg.get("model") or "").strip()
-            if not model:
-                st = check_ollama_status(base_url)
-                model = st.get("recommended") or "qwen2.5:3b"
-            payload = {
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                    "num_ctx": 4096,
-                    "num_predict": int(max_tokens),
-                },
-            }
-            if expect_json:
-                payload["format"] = "json"
-            resp = requests.post(f"{base_url}/api/generate", json=payload, timeout=120)
-            resp.raise_for_status()
-            return resp.json().get("response", ""), f"ollama:{model}", None
+        st = check_ollama_status(base_url, autostart=True)
+        if not st.get("running"):
+            return None, "offline", "Ollama local no está activo en http://127.0.0.1:11434; se usó el procesador local integrado."
 
-        if provider == "gemini":
-            api_key = (cfg.get("api_key") or "").strip()
-            if not api_key:
-                return None, "offline", "Falta API Key de Gemini; usando modo respaldo offline."
-            model = cfg.get("model") or "gemini-2.0-flash"
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-            body = {"contents": [{"parts": [{"text": prompt}]}]}
-            if expect_json:
-                body["generationConfig"] = {"responseMimeType": "application/json"}
-            resp = requests.post(url, json=body, timeout=35)
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return text, f"gemini:{model}", None
+        requested_model = (cfg.get("model") or "").strip()
+        installed = st.get("models") or []
+        if requested_model and (not installed or requested_model in installed):
+            model = requested_model
+        else:
+            model = st.get("recommended") or "qwen2.5:3b"
 
-        if provider == "openai":
-            api_key = (cfg.get("api_key") or "").strip()
-            if not api_key:
-                return None, "offline", "Falta API Key de OpenAI/Groq; usando modo respaldo offline."
-            base_url = (cfg.get("base_url") or "https://api.openai.com/v1").rstrip("/")
-            model = cfg.get("model") or "gpt-4o-mini"
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            body = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
                 "temperature": 0.1,
-            }
-            resp = requests.post(f"{base_url}/chat/completions", headers=headers, json=body, timeout=35)
-            resp.raise_for_status()
-            text = resp.json()["choices"][0]["message"]["content"]
-            return text, f"openai:{model}", None
-
+                "num_ctx": 4096,
+                "num_predict": int(max_tokens),
+            },
+        }
+        if expect_json:
+            payload["format"] = "json"
+        resp = requests.post(f"{base_url}/api/generate", json=payload, timeout=120)
+        resp.raise_for_status()
+        return resp.json().get("response", ""), f"ollama:{model}", None
     except Exception as exc:
-        return None, "offline", f"No se pudo conectar con {provider} ({exc}). Se aplicó respaldo local."
-
-    return None, "offline", None
+        return None, "offline", f"No se pudo conectar con Ollama local ({exc}). Se aplicó respaldo local."
 
 
 def _parse_json_from_text(text):

@@ -16,6 +16,10 @@ import {
     Building2,
     Table2,
     ShieldCheck,
+    Plus,
+    X,
+    Clock,
+    Calendar,
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { TIME_SLOTS } from '../utils/initialData';
@@ -51,6 +55,7 @@ const IAOptimizer = () => {
     const [instance, setInstance] = useState(null);
     const [method, setMethod] = useState('cpsat'); // cpsat | genetic | local_search
     const [scenario, setScenario] = useState('C'); // A | B | C
+    const [cpsatTime, setCpsatTime] = useState(15); // 6 | 15 | 30 segundos
     const [agRuns, setAgRuns] = useState(10);
     const [restarts, setRestarts] = useState(5);
 
@@ -61,16 +66,147 @@ const IAOptimizer = () => {
     const [selectedEntity, setSelectedEntity] = useState('');
     const [showJson, setShowJson] = useState(false);
 
-    // I4 Rescheduling controls
+    // I4 Rescheduling controls (dinámico: profesor + múltiples días + horas específicas + cola de bloqueos)
+    const TEACHABLE_SLOTS = TIME_SLOTS.map((label, idx) => ({ label, idx })).filter(
+        ({ label }) => !label.includes('Receso')
+    );
+    const ALL_HOUR_INDICES = TEACHABLE_SLOTS.map(({ idx }) => idx);
+    const MORNING_HOUR_INDICES = TEACHABLE_SLOTS.filter(({ idx }) => idx <= 7).map(({ idx }) => idx);
+    const AFTERNOON_HOUR_INDICES = TEACHABLE_SLOTS.filter(({ idx }) => idx >= 9).map(({ idx }) => idx);
+
     const [changeTeacherId, setChangeTeacherId] = useState('');
-    const [changeDay, setChangeDay] = useState(2); // Miércoles
+    const [changeDays, setChangeDays] = useState([2]); // Selección múltiple dinámica (0=Lun..4=Vie)
+    const [changeHourMode, setChangeHourMode] = useState('all'); // all | morning | afternoon | custom | exclude_course | no_quarter
+    const [changeHours, setChangeHours] = useState([0, 1, 2, 3]); // Bloques específicos cuando mode === 'custom'
+    const [changeCourseId, setChangeCourseId] = useState(''); // Materia a quitar cuando mode === 'exclude_course'
+    const [changeRules, setChangeRules] = useState([]); // Cola dinámica de múltiples bloqueos / exclusiones
+
+    const toggleChangeDay = (dayIdx) => {
+        setChangeDays((prev) =>
+            prev.includes(dayIdx) ? prev.filter((d) => d !== dayIdx) : [...prev, dayIdx].sort((a, b) => a - b)
+        );
+    };
+
+    const toggleChangeHour = (hourIdx) => {
+        setChangeHours((prev) =>
+            prev.includes(hourIdx) ? prev.filter((h) => h !== hourIdx) : [...prev, hourIdx].sort((a, b) => a - b)
+        );
+    };
+
+    const getSelectedHours = () => {
+        if (changeHourMode === 'morning') return MORNING_HOUR_INDICES;
+        if (changeHourMode === 'afternoon') return AFTERNOON_HOUR_INDICES;
+        if (changeHourMode === 'custom') return changeHours;
+        return ALL_HOUR_INDICES;
+    };
+
+    const formatHoursSummary = (mode, hrs) => {
+        if (mode === 'all' || hrs.length === ALL_HOUR_INDICES.length) return 'Todo el día';
+        if (mode === 'morning') return 'Matutino (07:00–13:55)';
+        if (mode === 'afternoon') return 'Vespertino (14:00–20:45)';
+        if (hrs.length <= 3) return hrs.map((h) => TIME_SLOTS[h]?.split(' ')[0] || h).join(', ');
+        return `${hrs.length} bloques (${TIME_SLOTS[hrs[0]]?.split(' ')[0]}…${TIME_SLOTS[hrs[hrs.length - 1]]?.split(' - ')[1] || ''})`;
+    };
+
+    const getTeacherAssignedCourses = (tidVal) => {
+        const tid = parseInt(tidVal, 10);
+        if (!tid || !instance?.courses) return [];
+        return instance.courses.filter((c) => parseInt(c.teacher_id, 10) === tid);
+    };
+
+    const handleAddChangeRule = () => {
+        if (!changeTeacherId) {
+            Swal.fire({ icon: 'warning', title: 'Selecciona un profesor', text: 'Elige primero al docente.' });
+            return;
+        }
+        const tid = parseInt(changeTeacherId, 10);
+        const teacherObj = (instance?.teachers || []).find((t) => parseInt(t.id, 10) === tid);
+        const teacherName = teacherObj?.name || `Docente ${tid}`;
+
+        if (changeHourMode === 'no_quarter') {
+            setChangeRules((prev) => [
+                ...prev,
+                {
+                    id: `${Date.now()}-${Math.random()}`,
+                    kind: 'no_quarter',
+                    teacherId: tid,
+                    teacherName,
+                },
+            ]);
+            return;
+        }
+
+        if (changeHourMode === 'exclude_course') {
+            const assigned = getTeacherAssignedCourses(tid);
+            const targetCid = parseInt(changeCourseId || assigned[0]?.id || 0, 10);
+            const courseObj = assigned.find((c) => parseInt(c.id, 10) === targetCid);
+            if (!courseObj) {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Sin materias asignadas',
+                    text: `${teacherName} ya no tiene materias asignadas en esta instancia.`,
+                });
+                return;
+            }
+            const roomObj = (instance?.rooms || []).find((r) => parseInt(r.group_id || r.id, 10) === parseInt(courseObj.group_id, 10));
+            setChangeRules((prev) => [
+                ...prev,
+                {
+                    id: `${Date.now()}-${Math.random()}`,
+                    kind: 'exclude_course',
+                    teacherId: tid,
+                    teacherName,
+                    courseId: parseInt(courseObj.id, 10),
+                    courseName: courseObj.name,
+                    groupLabel: roomObj?.name || `Grupo ${courseObj.group_id}`,
+                },
+            ]);
+            return;
+        }
+
+        const hrs = getSelectedHours();
+        if (changeDays.length === 0 || hrs.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Faltan días u horas',
+                text: 'Marca al menos un día y un bloque horario para bloquear.',
+            });
+            return;
+        }
+        setChangeRules((prev) => [
+            ...prev,
+            {
+                id: `${Date.now()}-${Math.random()}`,
+                kind: 'slots',
+                teacherId: tid,
+                teacherName,
+                days: [...changeDays],
+                hours: [...hrs],
+                mode: changeHourMode,
+            },
+        ]);
+    };
+
+    const handleRemoveChangeRule = (ruleId) => {
+        setChangeRules((prev) => prev.filter((r) => r.id !== ruleId));
+    };
 
     const fileInputRef = useRef(null);
 
     useEffect(() => {
         const saved = iaStorage.getActiveInstance();
+        if (saved && saved.id === 'ORIGINAL') {
+            const origInst = buildInstanceFromOriginalStorage();
+            setInstance(origInst);
+            setSourceKey('ORIGINAL');
+            iaStorage.setActiveInstance(origInst);
+            if (origInst.teachers?.length > 0) setChangeTeacherId(String(origInst.teachers[0].id));
+            if (origInst.rooms?.length > 0) setSelectedEntity(String(origInst.rooms[0].id));
+            return;
+        }
         const isFreshItiid = saved && saved.id === 'ITIID_2026' && saved.manual_schedule && saved.rooms?.[0]?.allowed_hours;
-        if (saved && saved.id !== 'ORIGINAL' && (saved.id !== 'ITIID_2026' || isFreshItiid)) {
+        const isStaleEneAbr = saved && saved.id === 'ITIID_ENE_ABR_2027' && saved.rooms?.some((r) => String(r.name || '').includes('(ex '));
+        if (saved && (saved.id !== 'ITIID_2026' || isFreshItiid) && !isStaleEneAbr) {
             setInstance(saved);
             setSourceKey(saved.id || 'ITIID_2026');
             if (saved.teachers?.length > 0) {
@@ -80,12 +216,12 @@ const IAOptimizer = () => {
                 setSelectedEntity(String(saved.rooms[0].id));
             }
         } else {
-            // Default to official ITIID Sep-Dic 2026 Excel instance on fresh load
-            callIAAction({ action: 'instance', instance_id: 'ITIID_2026' })
+            const targetId = isStaleEneAbr ? 'ITIID_ENE_ABR_2027' : 'ITIID_2026';
+            callIAAction({ action: 'instance', instance_id: targetId })
                 .then((data) => {
                     const loaded = data.instance;
                     setInstance(loaded);
-                    setSourceKey('ITIID_2026');
+                    setSourceKey(targetId);
                     iaStorage.setActiveInstance(loaded);
                     if (loaded.rooms?.length > 0) setSelectedEntity(String(loaded.rooms[0].id));
                     if (loaded.teachers?.length > 0) setChangeTeacherId(String(loaded.teachers[0].id));
@@ -136,7 +272,8 @@ const IAOptimizer = () => {
             if (loaded.teachers?.length > 0) {
                 setChangeTeacherId(String(loaded.change_teacher_id || loaded.teachers[0].id));
             }
-            if (loaded.change_day !== undefined) setChangeDay(loaded.change_day);
+            setChangeRules([]);
+            if (loaded.change_day !== undefined) setChangeDays([loaded.change_day]);
         } catch (err) {
             Swal.fire({ icon: 'error', title: 'Error cargando instancia', text: err.message });
         } finally {
@@ -148,14 +285,27 @@ const IAOptimizer = () => {
         if (!instance) return;
         setLoading(true);
         try {
+            let runInstance = instance;
+            if (sourceKey === 'ORIGINAL') {
+                const fresh = buildInstanceFromOriginalStorage();
+                const mergedExcluded = [
+                    ...new Set([...(fresh.excluded_teachers || []), ...(instance.excluded_teachers || [])]),
+                ];
+                runInstance = {
+                    ...fresh,
+                    excluded_teachers: mergedExcluded,
+                    teacher_course_exclusions: instance.teacher_course_exclusions || [],
+                };
+                setInstance(runInstance);
+            }
             const payload = {
                 action: 'solve',
                 method,
                 scenario,
-                instance,
+                instance: runInstance,
                 runs: agRuns,
                 restarts,
-                time_limit_sec: 6.0,
+                time_limit_sec: method === 'cpsat' ? cpsatTime : 6.0,
                 llm_config: method === 'llm_local' ? iaStorage.getLLMConfig() : undefined,
                 with_validator_retry: method === 'llm_local',
             };
@@ -163,16 +313,20 @@ const IAOptimizer = () => {
             if (res.warning) {
                 Swal.fire({ icon: 'info', title: 'Aviso del modelo local', text: res.warning });
             }
-            const enriched = { ...res, instance_id: instance.id, instance_name: instance.name, scenario };
+            const enriched = { ...res, instance_id: runInstance.id, instance_name: runInstance.name, scenario };
+            const activeInst = res.patched_instance || runInstance;
+            if (res.patched_instance) {
+                setInstance(res.patched_instance);
+            }
             setResult(enriched);
             iaStorage.setLastRun(enriched);
-            iaStorage.setActiveInstance(instance);
+            iaStorage.setActiveInstance(activeInst);
             if (viewTab === 'teacher') {
-                const cMap = Object.fromEntries((instance.courses || []).map((c) => [c.id, c]));
+                const cMap = Object.fromEntries((activeInst.courses || []).map((c) => [c.id, c]));
                 const firstTid = (res.schedule || []).map((it) => cMap[it.course_id]?.teacher_id).find(Boolean);
                 if (firstTid) setSelectedEntity(String(firstTid));
-            } else if (instance.rooms?.length > 0) {
-                setSelectedEntity(String(instance.rooms[0].id));
+            } else if (activeInst.rooms?.length > 0) {
+                setSelectedEntity(String(activeInst.rooms[0].id));
             }
         } catch (err) {
             Swal.fire({ icon: 'error', title: 'Error ejecutando motor IA', text: err.message });
@@ -211,20 +365,116 @@ const IAOptimizer = () => {
     };
 
     const handleRescheduleI4 = async () => {
-        if (!instance || !changeTeacherId) return;
+        if (!instance) return;
+        let rulesToApply = changeRules;
+        if (rulesToApply.length === 0) {
+            if (!changeTeacherId) {
+                Swal.fire({ icon: 'warning', title: 'Selecciona un profesor', text: 'Elige primero al docente.' });
+                return;
+            }
+            const tid = parseInt(changeTeacherId, 10);
+            const teacherObj = (instance?.teachers || []).find((t) => parseInt(t.id, 10) === tid);
+            const teacherName = teacherObj?.name || `Docente ${tid}`;
+
+            if (changeHourMode === 'no_quarter') {
+                rulesToApply = [{ id: 'direct', kind: 'no_quarter', teacherId: tid, teacherName }];
+            } else if (changeHourMode === 'exclude_course') {
+                const assigned = getTeacherAssignedCourses(tid);
+                const targetCid = parseInt(changeCourseId || assigned[0]?.id || 0, 10);
+                const courseObj = assigned.find((c) => parseInt(c.id, 10) === targetCid);
+                if (!courseObj) {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Sin materias asignadas',
+                        text: `${teacherName} ya no tiene materias asignadas en esta instancia.`,
+                    });
+                    return;
+                }
+                const roomObj = (instance?.rooms || []).find((r) => parseInt(r.group_id || r.id, 10) === parseInt(courseObj.group_id, 10));
+                rulesToApply = [
+                    {
+                        id: 'direct',
+                        kind: 'exclude_course',
+                        teacherId: tid,
+                        teacherName,
+                        courseId: parseInt(courseObj.id, 10),
+                        courseName: courseObj.name,
+                        groupLabel: roomObj?.name || `Grupo ${courseObj.group_id}`,
+                    },
+                ];
+            } else {
+                const hrs = getSelectedHours();
+                if (changeDays.length === 0 || hrs.length === 0) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Selección incompleta',
+                        text: 'Elige un profesor, al menos un día y al menos una hora para bloquear.',
+                    });
+                    return;
+                }
+                rulesToApply = [
+                    {
+                        id: 'direct',
+                        kind: 'slots',
+                        teacherId: tid,
+                        teacherName,
+                        days: [...changeDays],
+                        hours: [...hrs],
+                        mode: changeHourMode,
+                    },
+                ];
+            }
+        }
+
+        const seen = new Set();
+        const newConstraints = [];
+        const excludeTeachers = [];
+        const excludeCourseAssignments = [];
+        rulesToApply.forEach((rule) => {
+            if (rule.kind === 'no_quarter') {
+                if (!excludeTeachers.includes(rule.teacherId)) excludeTeachers.push(rule.teacherId);
+            } else if (rule.kind === 'exclude_course') {
+                excludeCourseAssignments.push({
+                    teacher_id: rule.teacherId,
+                    course_id: rule.courseId,
+                });
+            } else {
+                (rule.days || []).forEach((d) => {
+                    (rule.hours || []).forEach((h) => {
+                        const slotId = d * TIME_SLOTS.length + h;
+                        const key = `${rule.teacherId}_${slotId}`;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            newConstraints.push({ teacher_id: rule.teacherId, slot_id: slotId });
+                        }
+                    });
+                });
+            }
+        });
+
         setLoading(true);
         try {
             const res = await callIAAction({
                 action: 'reschedule',
                 instance,
                 scenario,
-                teacher_id: parseInt(changeTeacherId, 10),
-                day: parseInt(changeDay, 10),
+                new_constraints: newConstraints,
+                exclude_teachers: excludeTeachers,
+                exclude_course_assignments: excludeCourseAssignments,
+                time_limit_sec: Math.max(10.0, cpsatTime),
                 original_schedule: result?.instance_id === instance.id ? result.schedule : instance.manual_schedule || null,
             });
+            const summaryLabel =
+                rulesToApply.length === 1
+                    ? rulesToApply[0].kind === 'no_quarter'
+                        ? `${rulesToApply[0].teacherName} · Sin clases este cuatri`
+                        : rulesToApply[0].kind === 'exclude_course'
+                            ? `${rulesToApply[0].teacherName} · Sin ${rulesToApply[0].courseName}`
+                            : `${rulesToApply[0].days.map((d) => DAYS[d].slice(0, 3)).join(', ')} · ${formatHoursSummary(rulesToApply[0].mode, rulesToApply[0].hours)}`
+                    : `${rulesToApply.length} reglas aplicadas`;
             const enriched = {
                 ...res,
-                method: `CP-SAT Reprogramación I4 (${DAYS[changeDay]})`,
+                method: `CP-SAT Reprogramación I4 (${summaryLabel})`,
                 instance_id: instance.id,
                 instance_name: instance.name,
                 scenario,
@@ -235,13 +485,23 @@ const IAOptimizer = () => {
                 setInstance(res.patched_instance);
                 iaStorage.setActiveInstance(res.patched_instance);
             }
+            setChangeRules([]);
+            setChangeCourseId('');
             const stab = res.validation?.stability;
+            const reassList = res.reassigned_teachers || [];
+            const unassList = res.unassigned_courses || [];
+            const reassMsg = reassList.length > 0
+                ? ` Reasignadas ${reassList.length}: ${reassList.map((r) => `${r.course_name} (${r.from_teacher_name} → ${r.to_teacher_name})`).join('; ')}.`
+                : '';
+            const unassMsg = unassList.length > 0
+                ? ` Sin suplente disponible (quedan «Por asignar»): ${unassList.map((u) => u.course_name).join(', ')}.`
+                : '';
             Swal.fire({
                 icon: res.validation?.feasible ? 'success' : 'warning',
                 title: 'Reprogramación I4 Completada',
-                text: stab
-                    ? `Sesiones movidas: ${stab.moved_sessions} de ${stab.total_sessions} (${stab.unchanged_pct}% del horario intacto).`
-                    : 'Horario recalculado con el nuevo bloqueo.',
+                text: (stab
+                    ? `Sesiones movidas: ${stab.moved_sessions} de ${stab.total_sessions} (${stab.unchanged_pct}% intacto).`
+                    : 'Horario recalculado.') + reassMsg + unassMsg,
             });
         } catch (err) {
             Swal.fire({ icon: 'error', title: 'Error en reprogramación', text: err.message });
@@ -278,7 +538,9 @@ const IAOptimizer = () => {
                     setInstance(res.instance);
                     iaStorage.setActiveInstance(res.instance);
                     setExcelWarnings(res.warnings || []);
+                    setChangeRules([]);
                     if (res.instance.rooms?.length > 0) setSelectedEntity(String(res.instance.rooms[0].id));
+                    if (res.instance.teachers?.length > 0) setChangeTeacherId(String(res.instance.teachers[0].id));
                     Swal.fire({
                         icon: res.warnings?.length ? 'warning' : 'success',
                         title: 'Excel Importado (pandas / openpyxl)',
@@ -418,6 +680,7 @@ const IAOptimizer = () => {
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                             <option value="ITIID_2026">ITIID Sep–Dic 2026 (Excel Oficial UPV — 10 Grupos)</option>
+                            <option value="ITIID_ENE_ABR_2027">ITIID Ene–Abr 2027 (1°, 2°, 4°, 5°, 8° — 10 Grupos)</option>
                             <option value="ORIGINAL">Datos de mi sistema original (UPV)</option>
                             <option value="I1">I1 — Benchmark Público ITC-2007</option>
                             <option value="I2">I2 — ITIID 7° Cuatrimestre (con ref. manual)</option>
@@ -482,6 +745,20 @@ const IAOptimizer = () => {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {method === 'cpsat' && (
+                            <label className="flex items-center gap-2 text-gray-700">
+                                Calidad CP-SAT:
+                                <select
+                                    value={cpsatTime}
+                                    onChange={(e) => setCpsatTime(parseInt(e.target.value, 10))}
+                                    className="border border-gray-300 rounded px-2 py-1 text-xs bg-white"
+                                >
+                                    <option value={6}>6 s (Rápido)</option>
+                                    <option value={15}>15 s (Recomendado)</option>
+                                    <option value={30}>30 s (Máxima calidad)</option>
+                                </select>
+                            </label>
+                        )}
                         {method === 'genetic' && (
                             <label className="flex items-center gap-2 text-gray-700">
                                 Corridas AG:
@@ -518,8 +795,17 @@ const IAOptimizer = () => {
                 </div>
 
                 {instance?.description && (
-                    <div className="p-3 bg-blue-50 text-blue-800 rounded-lg text-xs border border-blue-100">
-                        <strong>{instance.name}:</strong> {instance.description}
+                    <div className="p-3 bg-blue-50 text-blue-800 rounded-lg text-xs border border-blue-100 space-y-1">
+                        <div>
+                            <strong>{instance.name}:</strong> {instance.description}
+                        </div>
+                        {(sourceKey === 'ITIID_2026' || sourceKey === 'ITIID_ENE_ABR_2027') && (
+                            <div className="text-blue-700">
+                                <strong>Nota:</strong> Para usar tus ediciones de la pestaña <em>Datos</em>, elige arriba{' '}
+                                <em>«Datos de mi sistema original (UPV)»</em>; para quitar una materia o docente aquí, usa el panel{' '}
+                                <em>Reprogramación Dinámica</em> abajo.
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -550,44 +836,251 @@ const IAOptimizer = () => {
                     </pre>
                 )}
 
-                {/* I4 Rescheduling Strip */}
-                <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="flex items-center gap-2 text-sm text-gray-700">
-                        <RefreshCw size={16} className="text-blue-600" />
-                        <span className="font-semibold">Reprogramación (I4 — Estabilidad):</span>
-                        <span>Bloquear día a docente y mover lo mínimo posible:</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <select
-                            value={changeTeacherId}
-                            onChange={(e) => setChangeTeacherId(e.target.value)}
-                            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white"
-                        >
-                            {(instance?.teachers || []).map((t) => (
-                                <option key={t.id} value={t.id}>
-                                    {t.name}
-                                </option>
-                            ))}
-                        </select>
-                        <select
-                            value={changeDay}
-                            onChange={(e) => setChangeDay(parseInt(e.target.value, 10))}
-                            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white"
-                        >
-                            {DAYS.map((d, idx) => (
-                                <option key={d} value={idx}>
-                                    No puede {d}
-                                </option>
-                            ))}
-                        </select>
+                {/* I4 Dynamic Multi-Day, Hours & Teacher/Course Exclusion Panel */}
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm text-gray-800">
+                            <RefreshCw size={16} className="text-purple-600" />
+                            <span className="font-semibold">Reprogramación Dinámica (I4 — Días, Horas y Materias):</span>
+                            <span className="text-gray-500 text-xs">
+                                Bloquea días/horas, quita una materia a un docente o sácalo del cuatrimestre (reasignación automática).
+                            </span>
+                        </div>
                         <button
                             onClick={handleRescheduleI4}
                             disabled={loading || !instance}
-                            className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                            className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
                         >
-                            Reprogramar CP-SAT
+                            {changeRules.length > 0
+                                ? `Reprogramar CP-SAT (${changeRules.length} ${changeRules.length === 1 ? 'regla' : 'reglas'})`
+                                : 'Reprogramar CP-SAT'}
                         </button>
                     </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+                        {/* Teacher */}
+                        <div className="lg:col-span-3">
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Profesor</label>
+                            <select
+                                value={changeTeacherId}
+                                onChange={(e) => {
+                                    setChangeTeacherId(e.target.value);
+                                    setChangeCourseId('');
+                                }}
+                                className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white"
+                            >
+                                {(instance?.teachers || []).map((t) => (
+                                    <option key={t.id} value={t.id}>
+                                        {t.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Change Mode / Action */}
+                        <div className="lg:col-span-3">
+                            <label className="text-xs font-semibold text-gray-600 mb-1 flex items-center gap-1">
+                                <Clock size={12} /> Tipo de cambio / bloqueo
+                            </label>
+                            <select
+                                value={changeHourMode}
+                                onChange={(e) => setChangeHourMode(e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white"
+                            >
+                                <option value="all">Bloquear todo el día</option>
+                                <option value="morning">Bloquear Matutino (07:00 – 13:55)</option>
+                                <option value="afternoon">Bloquear Vespertino (14:00 – 20:45)</option>
+                                <option value="custom">Bloquear horas específicas</option>
+                                <option value="exclude_course">No quiere dar una materia</option>
+                                <option value="no_quarter">No da clases este cuatrimestre</option>
+                            </select>
+                        </div>
+
+                        {/* Dynamic middle column: Days OR Subject OR Quarter notice */}
+                        {changeHourMode === 'exclude_course' ? (
+                            <div className="lg:col-span-4">
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                                    Materia que NO impartirá
+                                </label>
+                                {(() => {
+                                    const assigned = getTeacherAssignedCourses(changeTeacherId);
+                                    if (assigned.length === 0) {
+                                        return (
+                                            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                                Este docente no tiene materias asignadas actualmente.
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <select
+                                            value={changeCourseId || String(assigned[0].id)}
+                                            onChange={(e) => setChangeCourseId(e.target.value)}
+                                            className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white"
+                                        >
+                                            {assigned.map((c) => (
+                                                <option key={c.id} value={c.id}>
+                                                    {c.name} — {roomsById[c.group_id]?.name || `Grupo ${c.group_id}`}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    );
+                                })()}
+                            </div>
+                        ) : changeHourMode === 'no_quarter' ? (
+                            <div className="lg:col-span-4">
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Alcance</label>
+                                <div className="text-xs text-purple-800 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                                    Quita todas sus materias ({getTeacherAssignedCourses(changeTeacherId).length}) y las reasigna a docentes suplentes (o «Por asignar»).
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="lg:col-span-4">
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                                        <Calendar size={12} /> Días (elige 1 o más)
+                                    </label>
+                                    <div className="flex gap-2 text-[11px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setChangeDays([0, 1, 2, 3, 4])}
+                                            className="text-blue-600 hover:underline"
+                                        >
+                                            Todos
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setChangeDays([])}
+                                            className="text-gray-500 hover:underline"
+                                        >
+                                            Limpiar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {DAYS.map((d, idx) => {
+                                        const active = changeDays.includes(idx);
+                                        return (
+                                            <button
+                                                key={d}
+                                                type="button"
+                                                onClick={() => toggleChangeDay(idx)}
+                                                className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                                                    active
+                                                        ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-purple-50'
+                                                }`}
+                                            >
+                                                {d.slice(0, 3)}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add to dynamic queue */}
+                        <div className="lg:col-span-2 lg:pt-5">
+                            <button
+                                type="button"
+                                onClick={handleAddChangeRule}
+                                className="w-full flex items-center justify-center gap-1 px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-700 border border-purple-300 rounded-lg text-xs font-semibold transition-colors"
+                                title="Permite combinar distintos profesores, días, horas y exclusiones antes de reprogramar"
+                            >
+                                <Plus size={14} />
+                                Agregar regla
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Specific Hours Pill Picker (when custom mode is selected) */}
+                    {changeHourMode === 'custom' && (
+                        <div className="pt-2 border-t border-gray-200">
+                            <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-xs font-medium text-gray-600">
+                                    Marca los bloques horarios que NO puede impartir ({changeHours.length} seleccionados):
+                                </span>
+                                <div className="flex gap-2 text-[11px]">
+                                    <button
+                                        type="button"
+                                        onClick={() => setChangeHours(ALL_HOUR_INDICES)}
+                                        className="text-blue-600 hover:underline"
+                                    >
+                                        Todas
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setChangeHours([])}
+                                        className="text-gray-500 hover:underline"
+                                    >
+                                        Ninguna
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                                {TEACHABLE_SLOTS.map(({ label, idx }) => {
+                                    const active = changeHours.includes(idx);
+                                    return (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => toggleChangeHour(idx)}
+                                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                                                active
+                                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-indigo-50'
+                                            }`}
+                                        >
+                                            {label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Dynamic Queue of Added Blocks */}
+                    {changeRules.length > 0 && (
+                        <div className="pt-2 border-t border-gray-200 space-y-1.5">
+                            <div className="flex items-center justify-between text-xs text-gray-600">
+                                <span className="font-semibold">Bloqueos acumulados para reprogramar:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setChangeRules([])}
+                                    className="text-red-500 hover:underline text-[11px]"
+                                >
+                                    Vaciar lista
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {changeRules.map((rule) => (
+                                    <span
+                                        key={rule.id}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 border border-purple-200 text-xs"
+                                    >
+                                        <strong>{rule.teacherName}</strong>
+                                        {rule.kind === 'no_quarter' ? (
+                                            <span className="text-red-700 font-medium">· Sin clases este cuatrimestre</span>
+                                        ) : rule.kind === 'exclude_course' ? (
+                                            <span className="text-amber-800">· Sin {rule.courseName} ({rule.groupLabel})</span>
+                                        ) : (
+                                            <>
+                                                <span>· {(rule.days || []).map((d) => DAYS[d].slice(0, 3)).join(', ')}</span>
+                                                <span className="text-purple-700">({formatHoursSummary(rule.mode, rule.hours)})</span>
+                                            </>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveChangeRule(rule.id)}
+                                            className="hover:text-red-600 ml-0.5"
+                                            title="Quitar bloqueo"
+                                        >
+                                            <X size={13} />
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 

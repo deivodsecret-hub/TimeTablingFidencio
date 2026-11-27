@@ -20,9 +20,35 @@ const AvailabilityGrid = ({ availability, onChange, disabled = false }) => {
         return availability?.[day]?.[hour] || false;
     };
 
+    const setAllSlots = (value) => {
+        if (disabled) return;
+        const next = {};
+        DAYS.forEach((day) => {
+            next[day] = {};
+            HOURS.forEach((hour) => {
+                if (!hour.includes('(Receso)')) {
+                    next[day][hour] = value;
+                }
+            });
+        });
+        onChange(next);
+    };
+
     return (
         <div className="border rounded-lg p-4 bg-gray-50">
-            <div className="text-sm font-medium text-gray-700 mb-3">Horario de Disponibilidad</div>
+            <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-medium text-gray-700">Horario de Disponibilidad</div>
+                {!disabled && (
+                    <div className="flex gap-3 text-xs">
+                        <button type="button" onClick={() => setAllSlots(true)} className="text-blue-600 hover:underline">
+                            Marcar todo
+                        </button>
+                        <button type="button" onClick={() => setAllSlots(false)} className="text-red-600 hover:underline">
+                            Limpiar todo (0 hrs)
+                        </button>
+                    </div>
+                )}
+            </div>
             <div className="overflow-x-auto">
                 <table className="min-w-full border-collapse">
                     <thead>

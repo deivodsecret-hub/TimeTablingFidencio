@@ -1,0 +1,628 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla,es-nodecimaldot,es-noquoting,es-noshorthands]{babel}
+\usepackage[top=2.3cm,bottom=2.2cm,left=2.1cm,right=2.1cm]{geometry}
+\usepackage{graphicx,booktabs,tabularx,array,xcolor,tikz,enumitem,fancyhdr,hyperref,amsmath,amssymb}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,shapes.geometric,babel}
+
+% Paleta institucional UPV
+\definecolor{upvmorado}{HTML}{5B146B}
+\definecolor{upvazul}{HTML}{17384D}
+\definecolor{upvverde}{HTML}{008D79}
+\definecolor{upvnaranja}{HTML}{E67817}
+\definecolor{grisclaro}{HTML}{F8FAFC}
+\definecolor{grisborde}{HTML}{CBD5E1}
+\definecolor{gristexto}{HTML}{475569}
+\definecolor{azulsuave}{HTML}{EFF6FF}
+\definecolor{moradosuave}{HTML}{FAF5FF}
+
+\hypersetup{
+    colorlinks=true,
+    urlcolor=upvverde,
+    linkcolor=upvazul,
+    pdftitle={Proyecto final: Sistema inteligente para la generación de horarios de ITIID - Manual de Usuario},
+    pdfauthor={Equipo ITIID - Universidad Politécnica de Victoria}
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\emergencystretch=1.8em
+\setlist[itemize]{itemsep=2pt,topsep=3pt,leftmargin=*}
+\setlist[enumerate]{itemsep=3pt,topsep=3pt,leftmargin=*}
+\renewcommand{\arraystretch}{1.22}
+\addto\captionsspanish{\renewcommand{\contentsname}{Índice General}}
+
+% Encabezados y pies de página
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{%
+    \raisebox{-0.18\height}{\includegraphics[height=0.52cm]{img/logo_upv_morado.png}}\hspace{0.22cm}%
+    {\footnotesize\bfseries\color{upvmorado} UPV $\cdot$ ITIID}\hspace{0.15cm}{\footnotesize\color{gristexto}| Sistema Inteligente de Horarios}%
+}
+\fancyhead[R]{\footnotesize\color{gristexto} Manual de Usuario y Extensión}
+\fancyfoot[L]{\footnotesize\color{gristexto} Dr. José Fidencio López Luna $\cdot$ Fundamentos de IA}
+\fancyfoot[R]{\footnotesize\bfseries\color{upvazul} Página \thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.3pt}
+\setlength{\headheight}{20pt}
+
+% Comandos de formato y cajas
+\newcommand{\seccionUPV}[1]{%
+    \section{\texorpdfstring{\textcolor{upvmorado}{#1}}{#1}}%
+    \vspace{-0.22cm}{\color{upvnaranja}\rule{\textwidth}{1.1pt}}\vspace{0.12cm}%
+}
+
+\newcommand{\subseccionUPV}[1]{%
+    \subsection{\texorpdfstring{\textcolor{upvazul}{#1}}{#1}}%
+}
+
+\newcommand{\cajaNota}[2]{%
+    \par\medskip\noindent
+    \begin{tikzpicture}
+        \node[
+            fill=moradosuave,
+            draw=upvmorado!35,
+            rounded corners=3pt,
+            inner xsep=11pt,
+            inner ysep=8pt,
+            text width=\dimexpr\textwidth-24pt\relax,
+            align=justify
+        ] (box) {\textbf{\color{upvmorado}#1:} #2};
+        \draw[upvmorado, line width=3pt, rounded corners=1pt] (box.north west) -- (box.south west);
+    \end{tikzpicture}
+    \par\medskip
+}
+
+\newcommand{\cajaCodigo}[1]{%
+    \par\smallskip\noindent
+    \colorbox{grisclaro}{%
+        \parbox{\dimexpr\linewidth-2\fboxsep\relax}{%
+            \vspace{3pt}{\ttfamily\small #1}\vspace{3pt}%
+        }%
+    }\par\smallskip
+}
+
+\newcounter{figmanual}
+\newcommand{\captura}[3][0.88]{%
+    \par\medskip\noindent
+    \begin{minipage}{\textwidth}
+        \centering
+        \setlength{\fboxsep}{2pt}%
+        \setlength{\fboxrule}{0.6pt}%
+        \fcolorbox{grisborde}{white}{\includegraphics[width=#1\textwidth]{img/#2}}\\[4pt]
+        \refstepcounter{figmanual}%
+        {\footnotesize\textbf{\color{upvazul}Figura \thefigmanual.} {\color{gristexto}#3}}
+    \end{minipage}
+    \par\medskip
+}
+
+\begin{document}
+
+% ==============================================================================
+% PORTADA INSTITUCIONAL UPV
+% ==============================================================================
+\begin{titlepage}
+    \centering
+    \vspace*{0.1cm}
+    \includegraphics[height=2.35cm]{img/logos_upv_bis.png}\\[0.35cm]
+    {\color{upvmorado}\rule{\textwidth}{2pt}}\\[-0.22cm]
+    {\color{upvnaranja}\rule{\textwidth}{0.9pt}}\\[0.35cm]
+
+    {\Large\bfseries\color{upvazul} UNIVERSIDAD POLITÉCNICA DE VICTORIA\par}
+    \vspace{0.12cm}
+    {\normalsize\bfseries\color{gristexto} Ingeniería en Tecnologías de la Información e Innovación Digital (ITIID)\par}
+    \vspace{0.35cm}
+
+    \includegraphics[height=2.65cm]{img/logo_upv_morado.png}\\[0.35cm]
+
+    {\LARGE\bfseries\color{upvmorado} Proyecto final: Sistema inteligente para la\\generación de horarios de ITIID\par}
+    \vspace{0.28cm}
+    {\large\bfseries\color{upvazul} Manual de Usuario, Guía de Descarga e Instalación\\y Manual Técnico de Modificación y Extensión\par}
+    \vspace{0.45cm}
+
+    \begin{tikzpicture}
+        \node[
+            fill=grisclaro,
+            draw=grisborde,
+            rounded corners=4pt,
+            inner xsep=14pt,
+            inner ysep=9pt,
+            text width=0.88\textwidth
+        ] {%
+            \begin{tabularx}{\linewidth}{@{}lX@{}}
+                \textbf{\color{upvazul}Asignatura:} & Fundamentos de Inteligencia Artificial (7.\textsuperscript{o} Cuatrimestre) \\
+                \textbf{\color{upvazul}Dr. encargado:} & \textbf{Dr. José Fidencio López Luna} \\
+                \textbf{\color{upvazul}Institución:} & Universidad Politécnica de Victoria (UPV) --- Modelo BIS
+            \end{tabularx}
+        };
+    \end{tikzpicture}
+
+    \vspace{0.45cm}
+    {\normalsize\bfseries\color{upvmorado} INTEGRANTES DEL EQUIPO\par}
+    \vspace{0.18cm}
+
+    \begin{tikzpicture}
+        \node[
+            fill=white,
+            draw=upvmorado!35,
+            rounded corners=4pt,
+            inner xsep=16pt,
+            inner ysep=10pt,
+            text width=0.82\textwidth,
+            align=center
+        ] {%
+            \centering
+            \begin{tabular}{@{}c@{}}
+                Axel Librado Aguilera Alonso \\
+                Germán David Zavala Castro \\
+                Vasti Norely Ruiz Báez \\
+                Yahir Alejandro Roque Martínez \\
+                José Guadalupe Cornejo Alva \\
+                David Alejandro Ibarra Castañeda \\
+                Jesús Alberto Tovar Ramírez
+            \end{tabular}
+        };
+    \end{tikzpicture}
+
+    \vfill
+    {\color{upvmorado}\rule{0.55\textwidth}{0.6pt}}\\[0.15cm]
+    {\small\color{gristexto} Ciudad Victoria, Tamaulipas, México $\cdot$ Noviembre de 2026\par}
+\end{titlepage}
+
+% ==============================================================================
+% ÍNDICE GENERAL
+% ==============================================================================
+\pagenumbering{roman}
+\tableofcontents
+\newpage
+\pagenumbering{arabic}
+
+% ==============================================================================
+% 1. INTRODUCCIÓN Y ARQUITECTURA DEL SISTEMA
+% ==============================================================================
+\seccionUPV{Introducción y Arquitectura del Sistema}
+
+El \textbf{Sistema inteligente para la generación de horarios de ITIID} es una plataforma web híbrida desarrollada para automatizar la planeación, validación, comparación experimental y reprogramación de horarios académicos del programa de \textbf{Ingeniería en Tecnologías de la Información e Innovación Digital (ITIID)} en la \textbf{Universidad Politécnica de Victoria (UPV)}.
+
+La plataforma conserva intactos los tres módulos base de administración y resolución por \textit{backtracking} en C++ (\textbf{Inicio}, \textbf{Datos} y \textbf{Horarios}) e incorpora una suite completa de \textbf{Inteligencia Artificial} compuesta por tres módulos especializados: \textbf{Optimizador IA}, \textbf{Asistente LLM} y \textbf{Comparativa y Ética}.
+
+\cajaNota{Regla central de diseño (IA Híbrida Segura)}{Las asignaciones de clases nunca quedan a criterio libre de un modelo de lenguaje. Los horarios son construidos exclusivamente por motores formales de optimización (\textbf{OR-Tools CP-SAT}, \textbf{Algoritmo Genético}, \textbf{Búsqueda Local} o el solver clásico en \textbf{C++}) y auditados por un \textbf{Validador Común} determinista. El \textbf{LLM} actúa únicamente como traductor de preferencias en español con revisión humana obligatoria (\textit{human-in-the-loop}), explicador de conflictos y traductor de solicitudes de cambio.}
+
+\subseccionUPV{Arquitectura General de Componentes}
+
+El sistema opera de manera 100\% local mediante tres capas desacopladas que se comunican por HTTP/JSON y tuberías estándar (\texttt{stdin} y \texttt{stdout}):
+
+\begin{center}
+\begin{tikzpicture}[
+    font=\scriptsize,
+    box/.style={draw=upvazul, rounded corners=3pt, align=center, fill=azulsuave, minimum height=1.0cm, inner sep=5pt},
+    iabox/.style={draw=upvmorado, rounded corners=3pt, align=center, fill=moradosuave, minimum height=1.0cm, inner sep=5pt},
+    extbox/.style={draw=upvverde, rounded corners=3pt, align=center, fill=green!5, minimum height=0.9cm, inner sep=5pt},
+    arr/.style={-{Latex[length=2mm]}, thick, draw=upvazul}
+]
+    \node[box, text width=4.3cm] (fe) at (0,0) {\textbf{Frontend Web (React 19 + Vite)}\\Puerto \texttt{localhost:5173}\\Tailwind CSS $\cdot$ Recharts $\cdot$ LocalStorage};
+    \node[box, text width=4.6cm] (api) at (5.8,0) {\textbf{Servidor Puente (\mbox{Node.js} + Express)}\\Puerto \texttt{localhost:3001}\\\texttt{/api/solve} y \texttt{/api/ia/action}};
+    \node[box, text width=4.3cm] (cpp) at (11.6,1.55) {\textbf{Motor Clásico C++}\\\texttt{backend/solver.exe}\\Backtracking + Poda horizontal};
+    \node[iabox, text width=4.3cm] (py) at (11.6,-0.65) {\textbf{Motor IA Python (\texttt{cli.py})}\\CP-SAT $\cdot$ Genético $\cdot$ Búsq. Local\\Validador Común $\cdot$ Excel UPV};
+    \node[extbox, text width=4.3cm] (llm) at (11.6,-3.15) {\textbf{Servicio LLM 100\% Local}\\Ollama Local (\texttt{127.0.0.1:11434})\\Modelo \texttt{qwen2.5:3b} (Sin APIs externas)};
+
+    \draw[arr, <->] (fe) -- node[above]{HTTP JSON} (api);
+    \draw[arr, <->] (api.east) -- ++(0.45,0) |- (cpp.west);
+    \draw[arr, <->] (api.east) -- ++(0.45,0) |- (py.west);
+    \draw[arr, <->] (py) -- (llm);
+\end{tikzpicture}
+\end{center}
+
+\begin{itemize}
+    \item \textbf{Frontend (\texttt{frontend/}):} Aplicación SPA en React 19 con Vite 7, estilos en Tailwind CSS, gráficas estadísticas en Recharts, visualización topológica con \texttt{react-force-graph-2d} y exportación cliente en PDF/Excel (\texttt{jspdf}, \texttt{xlsx}).
+    \item \textbf{Servidor Puente (\texttt{server/server.js}):} API REST en Express (puerto \texttt{3001}) que recibe peticiones del navegador, ejecuta procesos hijos hacia C++ o Python con control de concurrencia y tiempos límite, e incluye respaldo automático hacia Python CP-SAT si faltan librerías de C++ en el equipo.
+    \item \textbf{Motor Clásico (\texttt{backend/solver.cpp}):} Algoritmo exacto de búsqueda con retroceso (\textit{backtracking}) y distribución horizontal de sesiones semanales.
+    \item \textbf{Motor de Inteligencia Artificial (\texttt{backend\_ia/}):} Paquete modular en Python que integra el modelo exacto \textbf{Google OR-Tools CP-SAT} (R2), \textbf{Algoritmo Genético} multicorrida (R3), \textbf{Búsqueda Local MRV + Hill Climbing} (R4), \textbf{Validador Oficial} compartido, generador de \textbf{Sábana Oficial UPV en Excel} (\texttt{openpyxl}, R1) y el servicio de lenguaje natural con anonimización automática (R5/R6).
+\end{itemize}
+
+% ==============================================================================
+% 2. QUÉ SE TIENE QUE DESCARGAR (REQUISITOS DE SOFTWARE Y HARDWARE)
+% ==============================================================================
+\seccionUPV{Qué Tienes que Descargar (Requisitos Previos)}
+
+Para instalar y ejecutar el proyecto desde cero en cualquier computadora con Windows 10/11 (o Linux/macOS), es necesario descargar las herramientas listadas en la Tabla~\ref{tab:descargas}.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Programas y librerías que se deben descargar para ejecutar el sistema.}
+\label{tab:descargas}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{4.3cm}@{}}
+\toprule
+\textbf{Componente} & \textbf{Carácter} & \textbf{Para qué sirve en el proyecto} & \textbf{Dónde descargarlo} \\
+\midrule
+\textbf{1. Node.js LTS} (v18 o superior; rec. v20/v22) & \textbf{Obligatorio} & Ejecuta el servidor Express (\texttt{server/}) e instala/sirve la interfaz React con \texttt{npm} (\texttt{frontend/}). & \url{https://nodejs.org} (instalador \texttt{.msi} LTS) \\
+\addlinespace[3pt]
+\textbf{2. Python} (v3.11 o v3.12) & \textbf{Obligatorio} & Ejecuta todo el motor \texttt{backend\_ia/} (CP-SAT, Genético, Búsqueda Local, Validador y Excel). & \url{https://www.python.org/downloads/} \\
+\addlinespace[3pt]
+\textbf{3. Paquetes \texttt{pip}} (\texttt{ortools}, \texttt{openpyxl}, \texttt{pandas}, \texttt{requests}) & \textbf{Obligatorio} & Librerías matemáticas de optimización exacta, lectura/escritura de plantillas Excel UPV y cliente HTTP. & Desde terminal con \texttt{pip install} (ver comando abajo) \\
+\addlinespace[3pt]
+\textbf{4. Ollama + Modelo \texttt{qwen2.5:3b}} ($\sim$1.9 GB) & \textbf{Obligatorio para LLM} & Ejecuta el modelo de lenguaje 100\% local en GPU/CPU en \texttt{127.0.0.1:11434}, sin claves API ni servicios en la nube. & \url{https://ollama.com/download} o \texttt{winget install Ollama.Ollama} \\
+\addlinespace[3pt]
+\textbf{5. Compilador C++ \texttt{g++}} (MinGW-w64) & \textbf{Opcional} & Solo se requiere si deseas modificar y recompilar \texttt{backend/solver.cpp}. El binario \texttt{solver.exe} ya viene incluido. & \url{https://winlibs.com} o MSYS2 \\
+\addlinespace[3pt]
+\textbf{6. Navegador moderno} (Chrome / Edge) & \textbf{Obligatorio} & Renderiza la interfaz en \texttt{http://localhost:5173}, el grafo 2D en Canvas y las descargas PDF/Excel. & Google Chrome o Microsoft Edge \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subseccionUPV{Requisitos Mínimos y Recomendados de Hardware}
+\begin{itemize}
+    \item \textbf{Procesador:} Intel Core i3 / AMD Ryzen 3 de 4 núcleos (Core i5 / Ryzen 5 o superior recomendado para comparativas multicorrida y Ollama local).
+    \item \textbf{Memoria RAM:} 4 GB mínimo para interfaz web + motores de optimización; \textbf{8 GB o más} si se ejecuta el modelo local \texttt{qwen2.5:3b} en Ollama.
+    \item \textbf{Espacio libre en disco:} 600 MB para el proyecto y dependencias (\texttt{node\_modules} + paquetes Python), más 2.2 GB adicionales si se descarga el modelo local de Ollama.
+    \item \textbf{Pantalla:} Resolución mínima \texttt{1366x768} (\texttt{1920x1080} recomendada para apreciar la Sábana General UPV completa).
+\end{itemize}
+
+\cajaNota{Importante al instalar Python en Windows}{En la primera pantalla del instalador oficial de Python (\texttt{python-3.12.x-amd64.exe}), marca obligatoriamente la casilla inferior \textbf{``Add python.exe to PATH''} antes de pulsar \textit{Install Now}. Esto permite que Node.js invoque el comando \texttt{python} automáticamente.}
+
+% ==============================================================================
+% 3. INSTALACIÓN Y QUÉ HACER PARA QUE FUNCIONE PASO A PASO
+% ==============================================================================
+\seccionUPV{Instalación y Puesta en Marcha Paso a Paso}
+
+Una vez descargados e instalados \textbf{Node.js} y \textbf{Python}, sigue estos pasos exactos en una terminal (\textit{PowerShell} o \textit{Símbolo del sistema / CMD}) para dejar la aplicación funcionando.
+
+\subseccionUPV{Paso 1: Verificar Node.js y Python en la Terminal}
+Abre una terminal nueva y comprueba que los tres comandos respondan con su número de versión:
+\cajaCodigo{%
+node --version\\
+npm --version\\
+python --version%
+}
+
+\subseccionUPV{Paso 2: Descomprimir el Proyecto e Instalar Librerías de Python}
+Extrae la carpeta del proyecto en una ruta accesible (por ejemplo, en el Escritorio) e instala las cuatro librerías del motor de Inteligencia Artificial con un solo comando:
+\cajaCodigo{%
+pip install ortools openpyxl pandas requests%
+}
+
+\subseccionUPV{Paso 3: Instalar Dependencias del Servidor y del Frontend}
+Desde la carpeta raíz del proyecto (\texttt{university\_time\_tabbling\_problem\_ed-main}), instala los paquetes de Node.js tanto en \texttt{server/} como en \texttt{frontend/}:
+\cajaCodigo{%
+cd server\\
+npm install\\[4pt]
+cd ../frontend\\
+npm install\\
+cd ..%
+}
+
+\subseccionUPV{Paso 4: Instalar Ollama y Descargar el Modelo Local}
+El sistema opera \textbf{exclusivamente con Ollama Local} (sin APIs externas ni claves de pago). Instala Ollama y descarga el modelo ligero recomendado:
+\cajaCodigo{%
+winget install Ollama.Ollama\\
+ollama pull qwen2.5:3b%
+}
+Al iniciar \texttt{server/server.js} o \texttt{run\_project.bat}, el sistema levanta automáticamente el servidor local de Ollama en \texttt{http://127.0.0.1:11434}.
+
+\subseccionUPV{Paso 5: Cómo Iniciar la Aplicación}
+
+Existen dos maneras de encender el sistema cada vez que vayas a utilizarlo:
+
+\textbf{Opción A --- Inicio automático en Windows (1 clic, recomendado):}\\
+En el Explorador de Archivos, entra a la carpeta raíz del proyecto y haz \textbf{doble clic sobre \texttt{run\_project.bat}}. El lanzador ejecuta automáticamente cuatro tareas:
+\begin{enumerate}
+    \item Verifica que exista \texttt{backend\textbackslash solver.exe} (o lo compila si detecta \texttt{g++}).
+    \item Detecta si tienes Ollama instalado y levanta \texttt{ollama serve} en segundo plano (\texttt{127.0.0.1:11434}).
+    \item Abre la ventana \textbf{Node Server} corriendo \texttt{npm start} en \texttt{http://localhost:3001}.
+    \item Abre la ventana \textbf{Frontend} corriendo \texttt{npm run dev} en \texttt{http://localhost:5173} y lanza tu navegador web automáticamente tras 5 segundos.
+\end{enumerate}
+
+\textbf{Opción B --- Inicio manual en dos terminales (Windows, Linux o macOS):}\\
+Si trabajas desde un editor como VS Code o en Linux/macOS, abre dos terminales en paralelo:
+
+\textit{Terminal 1 --- Servidor Backend y Puente IA (dejar abierta):}
+\cajaCodigo{%
+cd server\\
+npm start%
+}
+Verás el mensaje: \texttt{Server running on http://localhost:3001}.
+
+\textit{Terminal 2 --- Interfaz Web Vite/React (dejar abierta):}
+\cajaCodigo{%
+cd frontend\\
+npm run dev%
+}
+Abre tu navegador en \textbf{\texttt{http://localhost:5173}}. Para apagar el sistema al terminar, presiona \texttt{Ctrl + C} en ambas terminales o cierra las ventanas abiertas por \texttt{run\_project.bat}.
+
+\newpage
+% ==============================================================================
+% 4. MANUAL DE USUARIO: MÓDULOS BASE DEL SISTEMA
+% ==============================================================================
+\seccionUPV{Manual de Usuario: Módulos Base (Inicio, Datos y Horarios)}
+
+Al ingresar a \texttt{http://localhost:5173}, la interfaz muestra a la izquierda la barra lateral (\textbf{Sidebar}) dividida en dos bloques: los módulos administrativos originales (\textbf{Inicio}, \textbf{Datos}, \textbf{Horarios}) y la suite de \textbf{Inteligencia Artificial} (\textbf{Optimizador IA}, \textbf{Asistente LLM}, \textbf{Comparativa y Ética}).
+
+\subseccionUPV{Módulo Inicio / Vista General (\texttt{/})}
+
+El tablero inicial presenta en tiempo real el estado global de los catálogos guardados en el navegador (\texttt{localStorage}): total de materias activas, profesores registrados y matrícula acumulada, acompañados de una gráfica de barras de alumnos por cuatrimestre y una gráfica de anillo con el reparto de materias del plan ITIID.
+
+\captura{01_dashboard_inicio.png}{Tablero principal (Vista General) con indicadores globales, gráficas por cuatrimestre y menú lateral completo.}
+
+\subseccionUPV{Módulo Gestión de Datos (\texttt{/data})}
+
+Antes de generar un horario personalizado, aquí se administran los tres insumos fundamentales divididos en pestañas superiores:
+
+\textbf{1. Pestaña Profesores (Catálogo Oficial Sep--Dic 2026 y Materias Compartidas):} Incluye precargados los \textbf{32 profesores reales del periodo Sep--Dic 2026} clasificados por categoría (\textbf{FTC} Tiempo Completo, \textbf{PA} Asignatura e \textbf{Inglés}) junto con sus ventanas horarias y materias asignadas. Desde el formulario superior o el botón \textit{Editar} puedes dar de alta nuevos profesores o compartir una misma materia entre varios docentes (el sistema muestra la etiqueta \textit{``Compartida con: ...''} sin sobrescribir a los demás profesores).
+
+\captura{02_datos_profesores.png}{Pestaña Profesores con los 32 docentes oficiales Sep--Dic 2026, categorías FTC/PA/Inglés y materias compartidas.}
+
+Al pulsar el ícono de lápiz (\textit{Editar}) o el enlace \textbf{Configurar Disponibilidad}, se despliega la cuadrícula interactiva de \textbf{Horario de Disponibilidad} (lunes a viernes, de \texttt{07:00} a \texttt{20:45}, respetando los tres recesos institucionales: \texttt{10:40--11:10}, \texttt{13:55--14:00} y \texttt{17:40--18:00}). Las celdas en verde indican bloques habilitados para impartir clase; las celdas blancas bloquean esa franja.
+
+\captura[0.82]{03_datos_disponibilidad.png}{Modal de edición de docente y matriz interactiva de disponibilidad horaria por bloques.}
+
+\textbf{2. Pestaña Materias (Uno o Múltiples Profesores por Materia):} Administra las 68 asignaturas desde \textbf{Inmersión} hasta $10.\textsuperscript{o}$ cuatrimestre (incluyendo \textit{Bases de Datos en la Nube} y \textit{Tutorías}). Cada materia permite asignar \textbf{uno, dos, tres o más profesores} simultáneamente mediante el botón \textbf{+ Profe} o el selector \textbf{Profesores} al agregar/editar la materia; cuando un cuatrimestre abre varios grupos (ej. \texttt{1-1}, \texttt{1-2}, \texttt{1-3} o \texttt{7-1}, \texttt{7-2}), el sistema reparte automáticamente los grupos entre los docentes asignados.
+
+\captura{04_datos_materias.png}{Pestaña Materias mostrando múltiples profesores asignados por asignatura y acceso rápido ``+ Profe''.}
+
+\textbf{3. Pestaña Alumnos (Inmersión y $1.\textsuperscript{o}$ a $10.\textsuperscript{o}$ Cuatrimestre):} Registra la cantidad de estudiantes inscritos en \textbf{Inmersión} y en cada cuatrimestre. Con base en una capacidad estándar de 35 alumnos por aula, el sistema calcula automáticamente cuántos grupos virtuales se deben abrir por cuatrimestre mediante:
+\[
+\text{Número de grupos del cuatrimestre } q = \left\lceil \frac{\text{Alumnos}_q}{35} \right\rceil
+\]
+Por ejemplo, 32 alumnos generan 1 grupo (\texttt{1-1}), mientras que 70 alumnos generan 2 grupos (\texttt{7-1} y \texttt{7-2}).
+
+\captura{05_datos_alumnos.png}{Captura de matrícula estudiantil por cuatrimestre para el dimensionamiento automático de grupos.}
+
+\subseccionUPV{Módulo Clásico de Horarios (\texttt{/schedule})}
+
+Este módulo conecta tus datos de \texttt{localStorage} con el endpoint \texttt{POST /api/solve} (motor clásico \texttt{solver.exe} en C++, con respaldo transparente hacia CP-SAT si faltan librerías de compilador).
+\begin{enumerate}
+    \item Haz clic en el botón azul \textbf{Generar Horario}.
+    \item Selecciona el grupo deseado en el menú desplegable \textbf{Seleccionar Grupo}.
+    \item Descarga el horario individual o el paquete completo usando los botones \textbf{Excel}, \textbf{PDF}, \textbf{Todos (Excel)} o \textbf{Todos (PDF)}.
+\end{enumerate}
+
+\captura{06_horarios_clasico.png}{Horario semanal generado en el módulo clásico con controles de selección de grupo y exportación.}
+
+En la barra central \textbf{Vista}, puedes alternar hacia dos herramientas analíticas adicionales:
+\begin{itemize}
+    \item \textbf{Matriz:} Muestra la matriz de adyacencia entre cursos coloreando en verde pares que comparten docente, en amarillo pares del mismo grupo y en morado ambos conflictos.
+    \item \textbf{Grafo:} Construye un grafo interactivo de fuerzas que enlaza cursos, docentes, grupos y bloques de tiempo para inspeccionar visualmente la densidad de restricciones.
+\end{itemize}
+
+\captura{07_horarios_matriz.png}{Vista de Matriz de Adyacencia de Cursos para identificar relaciones de grupo y docente.}
+
+\captura{08_horarios_grafo.png}{Vista de Grafo interactivo de relaciones entre cursos, docentes, grupos y franjas horarias.}
+
+\newpage
+% ==============================================================================
+% 5. MANUAL DE USUARIO: MÓDULOS DE INTELIGENCIA ARTIFICIAL
+% ==============================================================================
+\seccionUPV{Manual de Usuario: Módulos de Inteligencia Artificial}
+
+La sección \textbf{Inteligencia Artificial} del menú lateral concentra los motores formales en Python, la importación/exportación en formato Sábana Oficial UPV, el asistente de lenguaje natural y el banco de pruebas comparativo.
+
+\subseccionUPV{Optimizador IA (\texttt{/ia-optimizer})}
+
+Este es el motor principal de generación y validación académica. Su flujo de uso consta de cuatro pasos sencillos:
+
+\begin{enumerate}
+    \item \textbf{Elegir la Instancia / Fuente de Datos (R1):}
+    \begin{itemize}
+        \item \textbf{\texttt{ITIID Sep--Dic 2026 (Excel UPV)}:} Instancia institucional completa con 10 grupos, 25 docentes, franjas fijas de Inglés y bloqueos de posgrado (\texttt{MI}/\texttt{DC}).
+        \item \textbf{\texttt{Mis Datos Actuales (LocalStorage)}:} Toma en vivo los profesores, materias y alumnos capturados en el módulo \textbf{Datos}, sin alterar tu almacenamiento original.
+        \item \textbf{Instancias de evaluación (\texttt{I1} a \texttt{I4}):} \texttt{I1} (benchmark público ITC-2007), \texttt{I2} (7.\textsuperscript{o} cuatrimestre ITIID con horario manual de referencia), \texttt{I3} (multicuatrimestre con recursos compartidos bloqueados) e \texttt{I4} (escenario de reprogramación).
+        \item \textbf{Plantilla Excel / Importar Excel:} Con los botones superiores \textbf{Plantilla Excel} e \textbf{Importar Excel} puedes descargar el formato \texttt{.xlsx} estructurado, llenarlo en Excel y cargarlo directamente con validación en \texttt{pandas}.
+    \end{itemize}
+    \item \textbf{Seleccionar el Motor de Optimización:}
+    \begin{itemize}
+        \item \textbf{OR-Tools CP-SAT (R2 --- Motor Principal):} Programación por restricciones con desigualdades booleanas exactas y arranque cálido (\textit{warm-start}).
+        \item \textbf{Algoritmo Genético (R3):} Evolución poblacional con selección por torneo, cruce uniforme, mutación y reparación en múltiples corridas independientes (reportando media y desviación estándar).
+        \item \textbf{Búsqueda Local (R4):} Construcción voraz con heurística \textbf{MRV} (\textit{Minimum Remaining Values}) seguida de \textbf{Hill Climbing con reinicios aleatorios}.
+        \item \textbf{LLM Local (Ollama):} Prueba directa con modelo generativo para contrastar contra los métodos exactos.
+    \end{itemize}
+    \item \textbf{Elegir el Escenario de Pesos Blandos:}
+    \begin{itemize}
+        \item \textbf{Escenario A (Prioriza Estudiantes):} Minimiza horas muertas estudiantiles (peso 10) y jornadas mayores a 6 horas diarias, compactando grupos matutinos desde las \texttt{07:00}.
+        \item \textbf{Escenario B (Prioriza Docentes):} Minimiza huecos entre clases docentes (peso 10), desbalance de carga y violaciones de preferencias personales (peso 10).
+        \item \textbf{Escenario C (Equilibrio):} Balancea de forma simétrica la compacidad estudiantil y las preferencias docentes.
+    \end{itemize}
+    \item \textbf{Ejecutar y Auditar:} Pulsa \textbf{Ejecutar Motor IA}. Las cuatro tarjetas resumen el dictamen del \textbf{Validador Oficial}: violaciones duras (\texttt{FACTIBLE (0)}), penalización blanda total, huecos de alumnos/docentes y tiempo de cómputo en milisegundos.
+\end{enumerate}
+
+\captura{09_ia_optimizador_cpsat.png}{Configuración del Optimizador IA ejecutando OR-Tools CP-SAT sobre I2 con dictamen FACTIBLE (0 violaciones duras).}
+
+En la parte inferior puedes cambiar entre cinco vistas (\textbf{Sábana General}, \textbf{Sábana Docentes}, \textbf{Por Grupo}, \textbf{Por Docente} y \textbf{Por Aula}) y descargar el libro multipestaña con formato institucional mediante \textbf{Excel Completo (R1)} o \textbf{PDF (Sábana)}.
+
+\captura{10_ia_sabana_upv.png}{Vista Sábana General en formato oficial UPV (grupos horizontales L $\cdot$ M $\cdot$ Mi $\cdot$ J $\cdot$ V y franjas de receso).}
+
+\textbf{Reprogramación Estable ante Imprevistos (I4):} Si a mitad del periodo un docente deja de estar disponible un día completo, selecciona el docente y el día bloqueado en la franja \textbf{Reprogramación (I4 --- Estabilidad)} y pulsa \textbf{Reprogramar CP-SAT}. El modelo resuelve nuevamente las restricciones duras penalizando cualquier movimiento innecesario respecto al horario vigente, reportando cuántas sesiones se movieron y el porcentaje del horario que permaneció intacto.
+
+\captura{11_ia_reprogramacion_i4.png}{Resultado de reprogramación mínima I4: bloqueo sobrevenido resuelto con solo 4 sesiones movidas (88.6\% de estabilidad).}
+
+\subseccionUPV{Asistente LLM (\texttt{/ia-llm})}
+
+Este módulo materializa la interacción en lenguaje natural ejecutándose \textbf{100\% en local mediante Ollama} (\texttt{http://127.0.0.1:11434}, modelo predeterminado \texttt{qwen2.5:3b}), sin depender de ninguna API externa ni enviar datos fuera de tu computadora. Aun así, conserva el módulo de anonimización (\texttt{Docente\_01}, \texttt{Aula\_01}) para protección institucional.
+
+\textbf{1. Pestaña R5 --- Extractor de Preferencias y Evaluación F1 (P2):}
+\begin{itemize}
+    \item Escribe en español las solicitudes de los profesores (por ejemplo, evitar viernes en la tarde, limitar horas diarias o preferir turno matutino) y pulsa \textbf{Extraer Restricciones JSON (R5)}.
+    \item Revisa en el panel derecho cada regla traducida, marca o desmarca las casillas de \textbf{Revisión Humana} y haz clic en \textbf{Aprobar y Aplicar al Optimizador} para incorporarlas a la siguiente corrida de CP-SAT, Genético o Búsqueda Local.
+    \item Más abajo, el botón \textbf{Evaluar Dataset Anotado (P2)} mide automáticamente \textbf{Precisión}, \textbf{Recall} y \textbf{F1-Score} sobre las 10 oraciones de referencia desglosadas por categoría de restricción.
+\end{itemize}
+
+\captura{12_llm_extractor_r5.png}{Pestaña R5 del Asistente LLM: texto libre en español, vista anonimizada y casillas obligatorias de revisión humana.}
+
+\captura{13_llm_evaluacion_f1.png}{Evaluación cuantitativa P2 del extractor R5 mostrando Precisión, Recall y F1 global y por tipo de restricción.}
+
+\textbf{2. Pestaña R6 --- Explicador de Conflictos y Pedidos de Cambio (P4 / I4):}
+\begin{itemize}
+    \item \textbf{Explicar Último Horario:} Lee el reporte numérico del Validador Común y redacta en español claro un diagnóstico ejecutivo con fortalezas, huecos detectados y recomendaciones de ajuste para la coordinación académica.
+    \item \textbf{Pedido de Cambio de Coordinación:} Escribe un imprevisto en lenguaje cotidiano (ej. \textit{``Docente\_04 ya no puede impartir clases los miércoles''}) y pulsa \textbf{Traducir Pedido y Reprogramar con CP-SAT} para traducir el bloqueo y obtener al instante un horario reparado con mínimo desplazamiento.
+\end{itemize}
+
+\captura{14_llm_explicador_r6.png}{Pestaña R6: explicación ejecutiva de métricas blandas (izquierda) y reprogramación directa desde texto libre (derecha).}
+
+\textbf{3. Pestaña Prueba P1 --- LLM Directo vs Validador:} Permite demostrar experimentalmente por qué un LLM no debe asignar horarios sin un solver matemático: ejecuta la generación directa con y sin una ronda de retroalimentación del validador, exhibiendo los choques de grupo, aula y recesos que el Validador Común atrapa.
+
+\captura{15_llm_prueba_p1.png}{Pestaña Prueba P1: auditoría empírica de las violaciones duras cometidas por generación directa frente al Validador Común.}
+
+\subseccionUPV{Comparativa y Ética (\texttt{/ia-benchmark})}
+
+Este módulo automatiza la evaluación científica de todos los algoritmos y documenta los controles éticos institucionales:
+\begin{itemize}
+    \item \textbf{Tabla de Posiciones (P3):} Selecciona la instancia (ej. \texttt{I2}), el escenario de pesos y pulsa \textbf{Ejecutar Comparativa Completa}. El sistema corre los seis enfoques sobre los mismos datos y los clasifica bajo la regla oficial: primero \textbf{cero violaciones duras} y segundo \textbf{menor penalización blanda}. Incluye botón para exportar la tabla comparativa a Excel.
+    \item \textbf{Gráficas Comparativas y Síntesis P1--P4:} Grafica en doble eje las violaciones duras frente a la penalización blanda, así como las horas muertas de estudiantes frente a huecos docentes.
+    \item \textbf{Pestaña Ética y Checklist:} Presenta la matriz de riesgos éticos, un \textbf{Verificador de Anonimización en vivo} (que muestra cómo se enmascaran tus docentes reales antes de salir a cualquier API) y la lista de verificación interactiva del proyecto.
+\end{itemize}
+
+\captura{16_benchmark_leaderboard.png}{Tabla de Posiciones (P3) comparando CP-SAT, Búsqueda Local, Algoritmo Genético, Horario Manual y LLM Directo.}
+
+\captura{17_benchmark_graficas.png}{Gráficas comparativas de violaciones duras, penalización blanda, horas muertas de alumnos y huecos docentes.}
+
+\captura{18_benchmark_etica_anon.png}{Pestaña de gobernanza ética con matriz de mitigación, verificador de anonimización en vivo y checklist del proyecto.}
+
+\newpage
+% ==============================================================================
+% 6. CÓMO MODIFICAR Y EXTENDER EL SISTEMA PARA AGREGAR MÁS COSAS
+% ==============================================================================
+\seccionUPV{Cómo Modificar el Sistema para Agregar Más Funciones}
+
+La arquitectura modular del proyecto fue diseñada para que cualquier integrante del equipo o desarrollador futuro pueda ampliar catálogos, reglas de negocio, algoritmos de optimización o pantallas sin romper lo existente. La Tabla~\ref{tab:archivos} resume qué archivo controla cada parte del sistema.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Mapa rápido de archivos clave para modificar o extender la aplicación.}
+\label{tab:archivos}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{6.2cm}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Archivo del Proyecto} & \textbf{Qué puedes modificar o agregar ahí} \\
+\midrule
+\texttt{frontend/src/utils/initialData.js} & Catálogo inicial de materias (\texttt{INITIAL\_COURSES}), profesores (\texttt{INITIAL\_TEACHERS}) y bloques horarios (\texttt{TIME\_SLOTS}). \\
+\texttt{frontend/src/App.jsx} y \texttt{components/Sidebar.jsx} & Rutas nuevas de navegación (\texttt{<Route>}) y botones del menú lateral izquierdo. \\
+\texttt{frontend/src/pages/*.jsx} & Vistas de interfaz de usuario (\texttt{Dashboard}, \texttt{Data}, \texttt{Schedule}, \texttt{IAOptimizer}, \texttt{IALLM}, \texttt{IABenchmark}). \\
+\texttt{frontend/src/utils/iaStorage.js} & Configuración por defecto del LLM (\texttt{DEFAULT\_LLM\_CONFIG}), puente \texttt{callIAAction()} y exportación PDF en cliente. \\
+\texttt{server/server.js} & Puertos, tiempos máximos de espera (\texttt{PYTHON\_TIMEOUT\_MS}) y comunicación Express $\leftrightarrow$ Python / C++. \\
+\texttt{backend\_ia/instances.py} & Instancias oficiales (\texttt{ITIID\_2026}, \texttt{I1}--\texttt{I4}), nuevos periodos cuatrimestrales y anonimizador de nombres. \\
+\texttt{backend\_ia/validator.py} & Franjas horarias, pesos de Escenarios (\texttt{SCENARIO\_WEIGHTS}) y reglas de validación duras y blandas. \\
+\texttt{backend\_ia/solvers.py} & Modelos de optimización: OR-Tools CP-SAT, Algoritmo Genético y Búsqueda Local (o nuevos metaheurísticos). \\
+\texttt{backend\_ia/llm\_service.py} & Prompts, soporte de modelos LLM, reglas NLP de extracción de preferencias y dataset anotado F1. \\
+\texttt{backend\_ia/excel\_io.py} & Diseño visual, colores, columnas y pestañas de la Sábana Oficial UPV exportada a Excel (\texttt{.xlsx}). \\
+\texttt{backend\_ia/cli.py} & Enrutador principal JSON de acciones Python (\texttt{solve}, \texttt{validate}, \texttt{benchmark}, \texttt{reschedule}, etc.). \\
+\texttt{backend/solver.cpp} & Algoritmo clásico de backtracking en C++ (requiere recompilar \texttt{solver.exe} si se edita). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subseccionUPV{Caso 1: Agregar Nuevas Materias, Docentes, Aulas o un Nuevo Cuatrimestre Oficial}
+
+\begin{itemize}
+    \item \textbf{Sin tocar código (vía Excel o Interfaz):} Descarga la plantilla desde \textbf{Optimizador IA $\rightarrow$ Plantilla Excel}, agrega tantas filas de docentes, aulas, materias, bloqueos y preferencias como necesites en las hojas del archivo \texttt{.xlsx}, y cárgala con \textbf{Importar Excel}.
+    \item \textbf{Dejar datos fijos en el catálogo inicial web:} Abre \texttt{frontend/src/utils/initialData.js} y añade objetos al arreglo \texttt{INITIAL\_COURSES} o \texttt{INITIAL\_TEACHERS}. Después entra a \textbf{Datos} en el navegador y haz clic en el botón gris \textbf{Predefinidos} para recargar tu catálogo en \texttt{localStorage}.
+    \item \textbf{Crear una nueva instancia institucional en Python (ej. \texttt{ITIID\_2027}):}
+    \begin{enumerate}
+        \item En \texttt{backend\_ia/instances.py}, crea una función \texttt{\_build\_itiid\_ene\_abr\_2027()} retornando el diccionario con \texttt{teachers}, \texttt{rooms}, \texttt{courses}, \texttt{blocked\_slots} y \texttt{preferences}.
+        \item Regístrala dentro de \texttt{get\_instance(instance\_id)}:
+        \cajaCodigo{if instance\_id == "ITIID\_2027":\\\hspace*{1.2em}return \_build\_itiid\_ene\_abr\_2027()}
+        \item En \texttt{frontend/src/pages/IAOptimizer.jsx}, agrega \texttt{<option value="ITIID\_2027">ITIID Ene-Abr 2027</option>} dentro del selector de fuentes de datos.
+    \end{enumerate}
+\end{itemize}
+
+\subseccionUPV{Caso 2: Agregar una Nueva Restricción Dura o Blanda (o un Escenario D)}
+
+Como el sistema utiliza un \textbf{Validador Común} compartido por todos los motores, toda regla nueva se agrega en solo dos archivos:
+\begin{enumerate}
+    \item \textbf{Definir pesos o validación en \texttt{backend\_ia/validator.py}:}
+    \begin{itemize}
+        \item Si deseas crear un \textbf{Escenario D} (por ejemplo, priorizar uso de laboratorios o compactar viernes), agrega la clave \texttt{"D"} al diccionario \texttt{SCENARIO\_WEIGHTS} (líneas 33--61).
+        \item Si es una nueva regla dura o métrica blanda, agrega su conteo dentro de \texttt{validate\_schedule()} para que el árbitro oficial la evalúe en cualquier horario.
+    \end{itemize}
+    \item \textbf{Incorporarla al motor exacto en \texttt{backend\_ia/solvers.py}:}
+    \begin{itemize}
+        \item Dentro de \texttt{\_build\_and\_solve\_cpsat()}, usa las variables binarias \texttt{x[(cid, slot)]} (que valen \texttt{1} si el curso \texttt{cid} se imparte en el bloque \texttt{slot}).
+        \item Para una \textbf{restricción dura} (prohibir algo estrictamente): añade \texttt{model.Add(...)}, por ejemplo \texttt{model.Add(sum(vars\_viernes\_tarde) == 0)}.
+        \item Para un \textbf{criterio blando} (penalizar sin prohibir): añade el término ponderado a \texttt{obj\_terms.append(peso * var)}. Los motores Genético y Búsqueda Local heredan automáticamente cualquier cambio hecho en \texttt{validate\_schedule()} porque su función de aptitud consulta al validador.
+    \end{itemize}
+\end{enumerate}
+
+\subseccionUPV{Caso 3: Agregar un Nuevo Algoritmo de Optimización (ej. Recocido Simulado)}
+
+Si deseas añadir un cuarto algoritmo en Python (por ejemplo, \textit{Simulated Annealing} o \textit{Tabu Search}):
+\begin{enumerate}
+    \item En \texttt{backend\_ia/solvers.py}, escribe una función \texttt{solve\_annealing(raw\_instance, scenario="C")} que construya una lista de asignaciones \texttt{[\{"course\_id": c, "room\_id": r, "start\_slot": s\}, ...]} y retorne el diccionario estándar:
+    \cajaCodigo{%
+    return \{\\
+    \hspace*{1em}"method": "Recocido Simulado",\\
+    \hspace*{1em}"method\_id": "annealing",\\
+    \hspace*{1em}"elapsed\_ms": elapsed,\\
+    \hspace*{1em}"schedule": best\_schedule,\\
+    \hspace*{1em}"validation": validate\_schedule(raw\_instance, best\_schedule, scenario=scenario)\\
+    \}%
+    }
+    \item En \texttt{backend\_ia/cli.py} (sección \texttt{if action == "solve":}), agrega:
+    \cajaCodigo{if method == "annealing": return solve\_annealing(instance, scenario=scenario)}
+    (Y opcionalmente añádelo a la lista \texttt{results} dentro de \texttt{if action == "benchmark":} para que compita automáticamente en la Tabla de Posiciones).
+    \item En \texttt{frontend/src/pages/IAOptimizer.jsx}, agrega \texttt{<option value="annealing">Recocido Simulado</option>} en el selector \textbf{Motor de Optimización}.
+\end{enumerate}
+
+\subseccionUPV{Caso 4: Agregar Nuevas Preferencias en Español o Cambiar de Modelo LLM}
+
+\begin{itemize}
+    \item \textbf{Usar otro modelo en Ollama (ej. Llama 3.2, Mistral o Gemma):} Descárgalo en terminal con \texttt{ollama pull llama3.2:3b}, entra a \textbf{Asistente LLM}, pulsa \textbf{Detectar modelos locales} y elígelo en el selector. Si quieres dejarlo como predeterminado en el código, cambia \texttt{model: 'qwen2.5:3b'} en \texttt{DEFAULT\_LLM\_CONFIG} dentro de \texttt{frontend/src/utils/iaStorage.js}.
+    \item \textbf{Soportar un nuevo tipo de preferencia docente:}
+    \begin{enumerate}
+        \item En \texttt{backend\_ia/validator.py}, amplía \texttt{preference\_forbidden\_slots(pref)} indicando qué índices de \texttt{slot} penaliza la nueva etiqueta (ej. \texttt{type == "avoid\_friday\_morning"}).
+        \item En \texttt{backend\_ia/llm\_service.py}, añade la etiqueta en la instrucción del prompt JSON de \texttt{extract\_preferences()} y su expresión regular de respaldo en el extractor local, además de agregar ejemplos en \texttt{GOLD\_PREFERENCES\_DATASET} para evaluar su F1.
+    \end{enumerate}
+\end{itemize}
+
+\subseccionUPV{Caso 5: Agregar una Nueva Pantalla / Módulo Web y Acción Backend}
+
+El puente Express (\texttt{/api/ia/action} en \texttt{server/server.js}) reenvía dinámicamente cualquier JSON hacia \texttt{backend\_ia/cli.py}, por lo que agregar un módulo nuevo completo toma cuatro pasos mínimos:
+\begin{enumerate}
+    \item En \texttt{backend\_ia/cli.py}, agrega un bloque \texttt{if action == "mi\_nueva\_accion": return \{...\}}.
+    \item Crea el archivo React \texttt{frontend/src/pages/NuevoModulo.jsx} e invoca tu acción Python con \texttt{await callIAAction(\{ action: 'mi\_nueva\_accion', ... \})}.
+    \item En \texttt{frontend/src/App.jsx}, importa \texttt{NuevoModulo} y añade \texttt{<Route path="/nuevo-modulo" element=\{<NuevoModulo />\} />}.
+    \item En \texttt{frontend/src/components/Sidebar.jsx}, agrega \texttt{\{ path: '/nuevo-modulo', label: 'Nuevo Módulo', icon: Sparkles \}} al arreglo \texttt{iaNavItems}. Vite recargará la interfaz en caliente (\textit{Hot Module Replacement}) sin reiniciar nada.
+\end{enumerate}
+
+\subseccionUPV{Caso 6: Modificar el Solver Clásico en C++ (\texttt{backend/solver.cpp})}
+
+Si editas la heurística de poda o validación en \texttt{backend/solver.cpp}, recompila el ejecutable desde terminal con:
+\cajaCodigo{%
+g++ backend/solver.cpp -o backend/solver.exe -O2%
+}
+O bien elimina \texttt{backend/solver.exe} y ejecuta \texttt{run\_project.bat}, el cual detectará la ausencia del binario y lo compilará automáticamente al iniciar.
+
+% ==============================================================================
+% 7. SOLUCIÓN DE PROBLEMAS FRECUENTES
+% ==============================================================================
+\newpage
+\seccionUPV{Solución de Problemas Frecuentes (Troubleshooting)}
+
+La Tabla~\ref{tab:errores} concentra los errores más habituales durante la instalación o ejecución y su solución directa.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Diagnóstico rápido y solución de incidentes comunes.}
+\label{tab:errores}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{4.3cm}>{\raggedright\arraybackslash}p{4.4cm}>{\raggedright\arraybackslash}X@{}}
+\toprule
+\textbf{Síntoma o Mensaje} & \textbf{Causa Probable} & \textbf{Solución Paso a Paso} \\
+\midrule
+\texttt{No se pudo iniciar Python} o \texttt{No module named 'ortools'} & Python no está en el \texttt{PATH} de Windows o faltan paquetes \texttt{pip}. & Reinstala Python marcando \textit{Add python.exe to PATH} y ejecuta \texttt{pip install ortools openpyxl pandas requests}, luego reinicia \texttt{server}. \\
+\addlinespace[3pt]
+\texttt{Failed to fetch} al pulsar \textbf{Ejecutar Motor IA} & El servidor Express (\texttt{server/}) en el puerto \texttt{3001} está apagado. & Abre una terminal en \texttt{server/} y ejecuta \texttt{npm start} (o inicia con \texttt{run\_project.bat}). \\
+\addlinespace[3pt]
+En \textbf{Horarios} clásico aparece: \textit{``El motor clásico determinó que no hay un horario viable''} (HTTP 422) & Hay varios grupos activos para un mismo docente cuyas horas disponibles en \textbf{Datos} no alcanzan sin traslape. & Amplía los bloques verdes del docente en \textbf{Datos $\rightarrow$ Profesores}, reduce grupos en \textbf{Alumnos}, o resuélvelo en \textbf{Optimizador IA} con \textbf{OR-Tools CP-SAT} (que incluye diagnóstico relajado). \\
+\addlinespace[3pt]
+\texttt{Ollama Local no detectado en :11434} & Ollama no está instalado o el servicio local está detenido. & Ejecuta \texttt{ollama serve} en terminal, o cambia el selector \textbf{Proveedor LLM} a \textbf{Respaldo Offline} para trabajar sin Ollama. \\
+\addlinespace[3pt]
+Cambios en \texttt{initialData.js} no aparecen en la tabla de \textbf{Datos} & El navegador sigue leyendo la versión previa guardada en \texttt{localStorage}. & Entra a \textbf{Datos $\rightarrow$ Profesores / Materias} y pulsa el botón gris \textbf{Predefinidos} (o limpia datos del sitio en herramientas de desarrollador \texttt{F12}). \\
+\addlinespace[3pt]
+Error \texttt{EADDRINUSE: address already in use :::3001} & Ya quedó otra ventana de \texttt{Node Server} abierta en segundo plano. & Cierra la ventana anterior de \texttt{Node Server} antes de volver a abrir \texttt{run\_project.bat}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\cajaNota{Recomendación final para demostraciones académicas}{Para una presentación ágil ante jurado o docente: (1) abre \textbf{Optimizador IA} y ejecuta \textbf{OR-Tools CP-SAT} sobre \textbf{I2} o \textbf{ITIID Sep--Dic 2026}, mostrando el dictamen \texttt{FACTIBLE (0)} y exportando la \textbf{Sábana General UPV} en Excel; (2) ejecuta una \textbf{Reprogramación I4} en vivo; (3) en \textbf{Asistente LLM} muestra extracción \textbf{R5} con revisión humana, métricas \textbf{F1 (P2)} y la \textbf{Prueba P1}; y (4) cierra en \textbf{Comparativa y Ética} ejecutando la \textbf{Tabla de Posiciones} completa.}
+
+\end{document}

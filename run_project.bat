@@ -32,6 +32,7 @@ echo [1/4] Backend binary found (backend\solver.exe). Skipping compilation.
 
 :start_services
 REM Start local Ollama server if installed and not already running
+set "OLLAMA_HOST=127.0.0.1:11434"
 if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
     netstat -ano | findstr ":11434 " >nul 2>nul || start "Ollama Local LLM" /min "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" serve
 )

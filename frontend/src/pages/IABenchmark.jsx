@@ -226,6 +226,7 @@ const IABenchmark = () => {
                                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                                 >
                                     <option value="ITIID_2026">ITIID Sep–Dic 2026 (Excel Oficial UPV — 10 Grupos)</option>
+                                    <option value="ITIID_ENE_ABR_2027">ITIID Ene–Abr 2027 (1°, 2°, 4°, 5°, 8° — 10 Grupos)</option>
                                     <option value="I2">I2 — ITIID 7° Cuatrimestre (con Manual)</option>
                                     <option value="I1">I1 — Benchmark Público ITC-2007</option>
                                     <option value="I3">I3 — ITIID Completo + Compartidos</option>

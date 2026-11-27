@@ -1,4 +1,6 @@
 import math
+import re
+import unicodedata
 from collections import defaultdict
 
 DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"]
@@ -102,19 +104,30 @@ def normalize_instance(raw):
     for c in courses:
         cid = int(c["id"])
         orig_cid = int(c.get("original_id", cid // 1000 if cid >= 1000 else cid))
+        raw_tids = []
+        for cand in (c.get("teacher_ids") or []):
+            try:
+                val = int(cand)
+                if val > 0 and val not in raw_tids:
+                    raw_tids.append(val)
+            except (TypeError, ValueError):
+                pass
         tid = c.get("teacher_id")
         if tid is None or tid == "" or tid == 0:
-            tid = assigned_map.get(cid) or assigned_map.get(orig_cid) or 0
+            tid = raw_tids[0] if raw_tids else (assigned_map.get(cid) or assigned_map.get(orig_cid) or 0)
         else:
             tid = int(tid)
+        if tid > 0 and tid not in raw_tids:
+            raw_tids.insert(0, tid)
         gid = int(c.get("group_id") or c.get("cuatrimestre") or 1)
         ws = int(c.get("weekly_sessions") or c.get("duration") or 1)
         norm_courses.append({
             "id": cid,
             "name": c.get("name", f"Materia {cid}"),
             "teacher_id": tid,
+            "teacher_ids": raw_tids,
             "group_id": gid,
-            "cuatrimestre": int(c.get("cuatrimestre") or (gid // 100 if gid >= 100 else gid)),
+            "cuatrimestre": int(c["cuatrimestre"]) if c.get("cuatrimestre") is not None else (gid // 100 if gid >= 100 else gid),
             "weekly_sessions": ws,
             "students": int(c.get("students") or 30),
             "requires_lab": bool(c.get("requires_lab", False)),
@@ -205,6 +218,183 @@ def normalize_instance(raw):
         else:
             soft_preferences.append(p)
 
+    # Rebalance courses when a teacher is explicitly excluded (whole quarter or specific course)
+    # or lacks room-compatible free slots (e.g., after blocking 1, 2 or more teachers in contingencies).
+    def _norm_subject_key(name):
+        s = unicodedata.normalize("NFD", str(name or "").lower())
+        s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+        return re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+    excluded_teachers = set()
+    for tid_val in (raw.get("excluded_teachers") or []):
+        try:
+            v = int(tid_val)
+            if v > 0:
+                excluded_teachers.add(v)
+        except (TypeError, ValueError):
+            pass
+    for t in teachers:
+        if t.get("active") is False or t.get("no_classes") is True:
+            try:
+                excluded_teachers.add(int(t["id"]))
+            except (TypeError, ValueError):
+                pass
+
+    excluded_by_course_id = defaultdict(set)
+    excluded_by_subject = defaultdict(set)
+    for exc in (raw.get("teacher_course_exclusions") or []):
+        try:
+            etid = int(exc.get("teacher_id") or 0)
+        except (TypeError, ValueError):
+            etid = 0
+        if etid <= 0:
+            continue
+        if exc.get("course_id") not in (None, ""):
+            try:
+                excluded_by_course_id[int(exc["course_id"])].add(etid)
+            except (TypeError, ValueError):
+                pass
+        if exc.get("course_name"):
+            key = _norm_subject_key(exc["course_name"])
+            if key:
+                excluded_by_subject[key].add(etid)
+
+    def _is_teacher_excluded_for(tid, course):
+        if not tid:
+            return False
+        if tid in excluded_teachers:
+            return True
+        if tid in excluded_by_course_id.get(course["id"], set()):
+            return True
+        if tid in excluded_by_subject.get(_norm_subject_key(course["name"]), set()):
+            return True
+        return False
+
+    # Discover sibling teachers who teach the exact same subject & quarter in other groups
+    sibling_teachers_by_key = defaultdict(list)
+    for c in norm_courses:
+        skey = (c["cuatrimestre"], _norm_subject_key(c["name"]))
+        for t_cand in (c.get("teacher_ids") or ([c["teacher_id"]] if c["teacher_id"] else [])):
+            if t_cand > 0 and t_cand not in sibling_teachers_by_key[skey]:
+                sibling_teachers_by_key[skey].append(t_cand)
+
+    rooms_by_gid = defaultdict(list)
+    for r in norm_rooms:
+        rooms_by_gid[r["group_id"]].append(r)
+
+    def _course_valid_slots(tid, course):
+        if _is_teacher_excluded_for(tid, course):
+            return set()
+        unavail = teacher_unavailable.get(tid, set())
+        cand_rooms = rooms_by_gid.get(course["group_id"]) or rooms_by_gid.get(0) or norm_rooms
+        best_slots = set()
+        for r in cand_rooms:
+            if room_assignment_problem(course, r):
+                continue
+            allowed_h = r.get("allowed_hours")
+            r_blk = room_blocked.get(r["id"], set())
+            slots = {
+                s for s in TEACHABLE_SLOTS
+                if (allowed_h is None or s % SLOTS_PER_DAY in allowed_h)
+                and s not in unavail
+                and s not in r_blk
+            }
+            if len(slots) > len(best_slots):
+                best_slots = slots
+        return best_slots
+
+    def _effective_capacity(tid, course_list):
+        """Slots usable by teacher `tid` across their assigned courses (bounded by daily limits)."""
+        union_slots = set()
+        for item in course_list:
+            union_slots.update(_course_valid_slots(tid, item))
+        dlim = teacher_daily_limits.get(tid)
+        if dlim is not None:
+            by_day = defaultdict(int)
+            for s in union_slots:
+                by_day[s // SLOTS_PER_DAY] += 1
+            return sum(min(cnt, dlim) for cnt in by_day.values())
+        return len(union_slots)
+
+    # Strip explicitly excluded teachers from each course's candidate pool
+    for c in norm_courses:
+        c["teacher_ids"] = [tid for tid in (c.get("teacher_ids") or []) if not _is_teacher_excluded_for(tid, c)]
+
+    courses_by_tid = defaultdict(list)
+    load_by_teacher = defaultdict(int)
+    for c in norm_courses:
+        if c["teacher_id"]:
+            courses_by_tid[c["teacher_id"]].append(c)
+            load_by_teacher[c["teacher_id"]] += c["weekly_sessions"]
+
+    reassigned = []
+    unassigned_courses = []
+    # Up to 2 passes so cascading reassignments (when 2-3 teachers are excluded/blocked) settle cleanly
+    for _ in range(2):
+        changed = False
+        for c in norm_courses:
+            cur_tid = c["teacher_id"]
+            explicitly_excluded = _is_teacher_excluded_for(cur_tid, c)
+            skey = (c["cuatrimestre"], _norm_subject_key(c["name"]))
+            cands = list(c.get("teacher_ids") or [])
+            for sib in sibling_teachers_by_key.get(skey, []):
+                if sib not in cands and not _is_teacher_excluded_for(sib, c):
+                    cands.append(sib)
+
+            cur_course_slots = len(_course_valid_slots(cur_tid, c)) if cur_tid else 0
+            cur_cap = _effective_capacity(cur_tid, courses_by_tid[cur_tid]) if cur_tid else 0
+            needs_move = explicitly_excluded or (cur_tid > 0 and ((cur_course_slots < c["weekly_sessions"]) or (cur_cap < load_by_teacher[cur_tid])))
+            if not needs_move:
+                continue
+
+            best_tid = cur_tid
+            best_score = None
+            for prio_idx, t_cand in enumerate(cands):
+                if t_cand == cur_tid or _is_teacher_excluded_for(t_cand, c):
+                    continue
+                cand_course_slots = len(_course_valid_slots(t_cand, c))
+                if cand_course_slots < c["weekly_sessions"]:
+                    continue
+                cand_cap = _effective_capacity(t_cand, courses_by_tid[t_cand] + [c])
+                slack = cand_cap - (load_by_teacher[t_cand] + c["weekly_sessions"])
+                score = (1 if slack >= 0 else 0, -prio_idx if slack >= 0 else slack, slack)
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_tid = t_cand
+
+            if best_tid != cur_tid and best_score is not None and best_score[0] == 1:
+                if cur_tid and c in courses_by_tid[cur_tid]:
+                    courses_by_tid[cur_tid].remove(c)
+                    load_by_teacher[cur_tid] -= c["weekly_sessions"]
+                c["teacher_id"] = best_tid
+                if best_tid not in c["teacher_ids"]:
+                    c["teacher_ids"].insert(0, best_tid)
+                courses_by_tid[best_tid].append(c)
+                load_by_teacher[best_tid] += c["weekly_sessions"]
+                reassigned.append({
+                    "course_id": c["id"],
+                    "course_name": c["name"],
+                    "group_id": c["group_id"],
+                    "from_teacher_id": cur_tid,
+                    "to_teacher_id": best_tid,
+                })
+                changed = True
+            elif explicitly_excluded and cur_tid:
+                # Never keep an explicitly excluded teacher on a course even if no backup exists
+                if c in courses_by_tid[cur_tid]:
+                    courses_by_tid[cur_tid].remove(c)
+                    load_by_teacher[cur_tid] -= c["weekly_sessions"]
+                c["teacher_id"] = 0
+                unassigned_courses.append({
+                    "course_id": c["id"],
+                    "course_name": c["name"],
+                    "group_id": c["group_id"],
+                    "from_teacher_id": cur_tid,
+                })
+                changed = True
+        if not changed:
+            break
+
     return {
         "name": raw.get("name", "Instancia ITIID"),
         "teachers": teachers,
@@ -216,6 +406,8 @@ def normalize_instance(raw):
         "blocked_slots": blocked_slots or [],
         "preferences": soft_preferences,
         "all_preferences": preferences or [],
+        "reassigned": reassigned,
+        "unassigned_courses": unassigned_courses,
     }
 
 
@@ -260,6 +452,28 @@ def preference_forbidden_slots(pref):
         if 0 <= s < TOTAL_SLOTS:
             bad.add(s)
     return bad
+
+
+def english_bridge_positions(inst):
+    """Returns {(group_id, day_idx): set(compact_pos)} for fixed English bands so they are never miscounted as student gaps."""
+    rooms_by_id = {int(r["id"]): r for r in (inst.get("rooms") or [])}
+    bridges = defaultdict(set)
+    for b in inst.get("blocked_slots") or []:
+        if not b.get("is_english") or b.get("type") == "teacher":
+            continue
+        rid = b.get("room_id")
+        slot = b.get("slot_id")
+        if rid is None or slot is None:
+            continue
+        slot = int(slot)
+        if not (0 <= slot < TOTAL_SLOTS):
+            continue
+        d, h = slot_to_day_hour(slot)
+        if h in HOUR_TO_POS:
+            r = rooms_by_id.get(int(rid), {})
+            gid = int(r.get("group_id") or rid)
+            bridges[(gid, d)].add(HOUR_TO_POS[h])
+    return bridges
 
 
 def validate_schedule(raw_instance, schedule, scenario="C", original_schedule=None):
@@ -420,13 +634,16 @@ def validate_schedule(raw_instance, schedule, scenario="C", original_schedule=No
     )
 
     # --- Soft Quality Metrics ---
+    eng_bridges = english_bridge_positions(inst)
     student_gaps = 0
     excessive_days = 0
     for gid, days_dict in group_day_hours.items():
         for d, positions in days_dict.items():
             uniq = sorted(set(positions))
             if len(uniq) > 1:
-                student_gaps += (uniq[-1] - uniq[0] + 1) - len(uniq)
+                min_p, max_p = uniq[0], uniq[-1]
+                day_bridges = {p for p in eng_bridges.get((gid, d), ()) if min_p < p < max_p}
+                student_gaps += (max_p - min_p + 1) - len(set(uniq) | day_bridges)
             if len(positions) > 6:
                 excessive_days += len(positions) - 6
 

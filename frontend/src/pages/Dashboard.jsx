@@ -29,10 +29,10 @@ const loadDashboardState = () => {
     const totalStudents = Object.values(students).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
 
     const studentData = [];
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 0; i <= 10; i++) {
         if (students[i] && students[i] > 0) {
             studentData.push({
-                name: `${i}° C`,
+                name: i === 0 ? 'Inmersión' : `${i}° C`,
                 alumnos: students[i] || 0
             });
         }
@@ -45,7 +45,7 @@ const loadDashboardState = () => {
     });
 
     const courseData = Object.entries(courseCounts).map(([q, count]) => ({
-        name: `${q}° Cuatrimestre`,
+        name: Number(q) === 0 ? 'Inmersión' : `${q}° Cuatrimestre`,
         value: count
     }));
 

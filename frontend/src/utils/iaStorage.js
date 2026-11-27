@@ -1,4 +1,4 @@
-import { storage } from './storage';
+import { storage, getCourseTeacherIds, pickTeacherForCourseGroup, isTeacherUnavailable } from './storage';
 import { TIME_SLOTS } from './initialData';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -18,10 +18,9 @@ const IA_KEYS = {
 export const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
 export const DEFAULT_LLM_CONFIG = {
-    provider: 'ollama', // 'ollama' | 'offline' | 'gemini' | 'openai'
-    api_key: '',
+    provider: 'ollama', // 100% local con Ollama (sin APIs externas)
     model: 'qwen2.5:3b',
-    base_url: 'http://localhost:11434',
+    base_url: 'http://127.0.0.1:11434',
 };
 
 export async function callIAAction(payload) {
@@ -40,12 +39,31 @@ export async function callIAAction(payload) {
 export const iaStorage = {
     getLLMConfig: () => {
         try {
-            return { ...DEFAULT_LLM_CONFIG, ...JSON.parse(localStorage.getItem(IA_KEYS.LLM_CONFIG) || '{}') };
+            const stored = JSON.parse(localStorage.getItem(IA_KEYS.LLM_CONFIG) || '{}');
+            const cleanUrl =
+                stored.base_url && (stored.base_url.includes('127.0.0.1') || stored.base_url.includes('localhost'))
+                    ? stored.base_url
+                    : DEFAULT_LLM_CONFIG.base_url;
+            return {
+                provider: 'ollama',
+                model: stored.model && !stored.model.includes('gemini') && !stored.model.includes('gpt-')
+                    ? stored.model
+                    : DEFAULT_LLM_CONFIG.model,
+                base_url: cleanUrl,
+            };
         } catch {
             return DEFAULT_LLM_CONFIG;
         }
     },
-    setLLMConfig: (cfg) => localStorage.setItem(IA_KEYS.LLM_CONFIG, JSON.stringify(cfg)),
+    setLLMConfig: (cfg) =>
+        localStorage.setItem(
+            IA_KEYS.LLM_CONFIG,
+            JSON.stringify({
+                provider: 'ollama',
+                model: cfg?.model || DEFAULT_LLM_CONFIG.model,
+                base_url: cfg?.base_url || DEFAULT_LLM_CONFIG.base_url,
+            })
+        ),
 
     getPreferences: () => {
         try {
@@ -112,13 +130,11 @@ export function buildInstanceFromOriginalStorage() {
     const constraints = storage.getConstraints();
     const approvedPrefs = iaStorage.getPreferences().filter((p) => p.approved !== false);
 
-    // Map course_id -> teacher_id from teacher.assignedCourses when course.teacher_id is null
-    const teacherByCourse = {};
-    teachers.forEach((t) => {
-        (t.assignedCourses || []).forEach((cid) => {
-            teacherByCourse[cid] = t.id;
-        });
-    });
+    const teacherMap = Object.fromEntries(teachers.map((t) => [parseInt(t.id, 10), t]));
+    const excludedTeachers = teachers
+        .filter((t) => isTeacherUnavailable(t))
+        .map((t) => parseInt(t.id, 10))
+        .filter(Boolean);
 
     const GROUP_CAPACITY = 35;
     let usedFallbackStudents = false;
@@ -133,38 +149,50 @@ export function buildInstanceFromOriginalStorage() {
 
     const rooms = [];
     const expandedCourses = [];
+    const assignedLoad = {};
 
-    for (let q = 1; q <= 10; q++) {
+    for (let q = 0; q <= 10; q++) {
         const count = parseInt(activeStudents[q]) || 0;
         if (count <= 0) continue;
         const numGroups = Math.ceil(count / GROUP_CAPACITY);
         // Skip 40-hour Estadía blocks only if exceeding regular classroom slots; keep standard courses
         const quarterCourses = allCourses.filter(
-            (c) => parseInt(c.cuatrimestre) === q && (parseInt(c.weekly_sessions) || 1) <= 15
+            (c) => parseInt(c.cuatrimestre, 10) === q && (parseInt(c.weekly_sessions) || 1) <= 15
         );
 
         for (let i = 0; i < numGroups; i++) {
             const groupIndex = i + 1;
-            const groupId = q * 100 + groupIndex;
-            const groupName = `${q}-${groupIndex}`;
+            const groupId = q === 0 ? (90 + groupIndex) : (q * 100 + groupIndex);
+            const groupName = q === 0
+                ? (numGroups === 1 ? 'Inmersión' : `Inm-${groupIndex}`)
+                : `${q}-${groupIndex}`;
 
             rooms.push({
                 id: groupId,
-                name: `Grupo ${groupName}`,
+                name: q === 0 ? groupName : `Grupo ${groupName}`,
                 capacity: GROUP_CAPACITY,
                 group_id: groupId,
                 type: 'aula',
+                shift: q === 0 || q === 3 ? 'vespertino' : 'matutino',
             });
 
             quarterCourses.forEach((course) => {
-                const resolvedTeacher = course.teacher_id || teacherByCourse[course.id] || 0;
+                const candidateIds = getCourseTeacherIds(course, teachers).filter(
+                    (tid) => !isTeacherUnavailable(teacherMap[tid])
+                );
+                const resolvedTeacher = pickTeacherForCourseGroup(course, i, teachers, assignedLoad) || 0;
+                const sessions = parseInt(course.weekly_sessions || 1, 10);
+                if (resolvedTeacher) {
+                    assignedLoad[resolvedTeacher] = (assignedLoad[resolvedTeacher] || 0) + sessions;
+                }
                 expandedCourses.push({
                     ...course,
                     original_id: course.id,
                     id: course.id * 1000 + groupId,
                     group_id: groupId,
                     teacher_id: resolvedTeacher,
-                    students: Math.min(GROUP_CAPACITY, count),
+                    teacher_ids: candidateIds,
+                    students: Math.min(GROUP_CAPACITY, Math.ceil(count / numGroups)),
                 });
             });
         }
@@ -183,6 +211,7 @@ export function buildInstanceFromOriginalStorage() {
         rooms,
         courses: expandedCourses,
         constraints,
+        excluded_teachers: excludedTeachers,
         blocked_slots: [],
         preferences: approvedPrefs,
         manual_schedule: storage.getSchedule() || null,

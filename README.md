@@ -55,7 +55,7 @@ university_time_tabbling_problem_ed-main/
    - **Vistas y exportación (Formato Oficial UPV)**: visualización en la página y exportación en **Excel (`openpyxl`)** y **PDF** con **Sábana General (Excel)** horizontal lado a lado (`L · M · Mi · J · V` por grupo, `Receso` y Franjas de Inglés), **Sábana Docentes (Excel)** con ventanas horarias y códigos `MI`/`DC`, además de vistas individuales **Por Grupo**, **Por Docente** y **Por Aula**.
 
 5. **Asistente LLM (`/ia-llm`)**:
-   - **Proveedor configurable y detección automática de Ollama**: detecta automáticamente **Ollama local** en `http://127.0.0.1:11434` (por defecto `qwen2.5:3b` acelerado en GPU) y también soporta **Google Gemini API**, **OpenAI / Groq / API compatible** o **Modo Respaldo Offline** (sin API Key).
+   - **100% IA Local con Ollama (Sin APIs externas)**: inicia y conecta automáticamente con **Ollama local** en `http://127.0.0.1:11434` usando el modelo local instalado (`qwen2.5:3b` acelerado en GPU/CPU), sin requerir claves API ni conexión a servicios en la nube.
    - **Anonimización automática**: sustituye nombres reales de docentes y aulas (`Docente_01`, `Aula_01`) antes de enviar datos a proveedores externos.
    - **R5 — Extractor de Preferencias (P2)**: convierte texto en español a restricciones JSON con casillas de **revisión humana** antes de aplicarlas al optimizador. Incluye evaluador automático contra dataset anotado (10 casos) con **Precisión, Recall y F1 globales y por tipo de restricción**.
    - **R6 — Explicador y Cambios (P4 / I4)**: explica en español los conflictos del último horario validado, propone ajustes y traduce pedidos de cambio en lenguaje natural (ej. *"Docente_04 ya no puede los miércoles"*) a restricciones que disparan reprogramación mínima con CP-SAT.

@@ -4,6 +4,40 @@ import traceback
 import time
 
 
+def _sync_reassigned_courses(raw_inst):
+    """If normalize_instance rebalanced or unassigned courses, sync updated teacher_id/teacher_ids back to raw_inst."""
+    from validator import normalize_instance
+    norm = normalize_instance(raw_inst)
+    reassigned = norm.get("reassigned") or []
+    unassigned = norm.get("unassigned_courses") or []
+    if not reassigned and not unassigned:
+        return raw_inst, [], []
+    patched = json.loads(json.dumps(raw_inst))
+    t_names = {int(t["id"]): t.get("name", f"Docente {t['id']}") for t in patched.get("teachers", [])}
+    norm_by_cid = {c["id"]: c for c in norm["courses"]}
+    for c in patched.get("courses", []):
+        nc = norm_by_cid.get(int(c["id"]))
+        if nc is not None:
+            c["teacher_id"] = nc["teacher_id"]
+            c["teacher_ids"] = list(nc.get("teacher_ids") or [])
+    readable_reassigned = [
+        {
+            **r,
+            "from_teacher_name": t_names.get(r["from_teacher_id"], str(r["from_teacher_id"])),
+            "to_teacher_name": t_names.get(r["to_teacher_id"], str(r["to_teacher_id"])),
+        }
+        for r in reassigned
+    ]
+    readable_unassigned = [
+        {
+            **u,
+            "from_teacher_name": t_names.get(u["from_teacher_id"], str(u["from_teacher_id"])),
+        }
+        for u in unassigned
+    ]
+    return patched, readable_reassigned, readable_unassigned
+
+
 def handle_action(payload):
     action = payload.get("action")
     scenario = payload.get("scenario", "C")
@@ -51,16 +85,17 @@ def handle_action(payload):
                 "warning": res.get("warning"),
             }
         from solvers import solve_cpsat, solve_genetic, solve_local_search
+        synced_inst, reassigned, unassigned = _sync_reassigned_courses(instance)
         if method == "cpsat":
-            return solve_cpsat(
-                instance,
+            res = solve_cpsat(
+                synced_inst,
                 scenario=scenario,
-                time_limit_sec=float(payload.get("time_limit_sec", 6.0)),
+                time_limit_sec=float(payload.get("time_limit_sec", 15.0)),
                 original_schedule=orig,
             )
-        if method == "genetic":
-            return solve_genetic(
-                instance,
+        elif method == "genetic":
+            res = solve_genetic(
+                synced_inst,
                 scenario=scenario,
                 runs=int(payload.get("runs", 10)),
                 population_size=int(payload.get("population_size", 24)),
@@ -68,15 +103,23 @@ def handle_action(payload):
                 mutation_rate=float(payload.get("mutation_rate", 0.12)),
                 original_schedule=orig,
             )
-        if method == "local_search":
-            return solve_local_search(
-                instance,
+        elif method == "local_search":
+            res = solve_local_search(
+                synced_inst,
                 scenario=scenario,
                 restarts=int(payload.get("restarts", 5)),
                 max_iterations=int(payload.get("max_iterations", 180)),
                 original_schedule=orig,
             )
-        return {"error": f"Método no soportado: {method}"}
+        else:
+            return {"error": f"Método no soportado: {method}"}
+        if reassigned:
+            res["reassigned_teachers"] = reassigned
+        if unassigned:
+            res["unassigned_courses"] = unassigned
+        if reassigned or unassigned:
+            res["patched_instance"] = synced_inst
+        return res
 
     if action == "reschedule":
         from solvers import solve_cpsat
@@ -86,18 +129,60 @@ def handle_action(payload):
             base = solve_cpsat(instance, scenario=scenario, time_limit_sec=4.0)
             orig = base["schedule"]
         patched = json.loads(json.dumps(instance))
-        extra_constraints = payload.get("new_constraints") or []
-        if not extra_constraints and payload.get("teacher_id") is not None and payload.get("day") is not None:
+        extra_constraints = list(payload.get("new_constraints") or [])
+        if not extra_constraints and payload.get("teacher_id") is not None and not payload.get("exclude_teachers") and not payload.get("exclude_course_assignments"):
             tid = int(payload["teacher_id"])
-            day = int(payload["day"])
-            for h in TEACHABLE_HOURS:
-                extra_constraints.append({"teacher_id": tid, "slot_id": day * SLOTS_PER_DAY + h})
-        patched.setdefault("constraints", []).extend(extra_constraints)
+            raw_days = payload.get("days")
+            if raw_days is None and payload.get("day") is not None:
+                raw_days = [payload["day"]]
+            days_list = [int(d) for d in (raw_days or []) if 0 <= int(d) < 5]
+            raw_hours = payload.get("hours")
+            hours_list = [int(h) for h in raw_hours if int(h) in TEACHABLE_HOURS] if raw_hours else list(TEACHABLE_HOURS)
+            for day in days_list:
+                for h in hours_list:
+                    extra_constraints.append({"teacher_id": tid, "slot_id": day * SLOTS_PER_DAY + h})
+        existing = {(int(c["teacher_id"]), int(c["slot_id"])) for c in patched.get("constraints", []) if "teacher_id" in c and "slot_id" in c}
+        for c in extra_constraints:
+            key = (int(c["teacher_id"]), int(c["slot_id"]))
+            if key not in existing:
+                existing.add(key)
+                patched.setdefault("constraints", []).append({"teacher_id": key[0], "slot_id": key[1]})
 
-        res = solve_cpsat(patched, scenario=scenario, time_limit_sec=float(payload.get("time_limit_sec", 6.0)), original_schedule=orig)
+        # Teacher whole-quarter exclusions and per-course exclusions
+        excl_t = {int(t) for t in (patched.get("excluded_teachers") or []) if int(t) > 0}
+        for t in (payload.get("exclude_teachers") or []):
+            if int(t) > 0:
+                excl_t.add(int(t))
+        if excl_t:
+            patched["excluded_teachers"] = sorted(excl_t)
+
+        excl_c = list(patched.get("teacher_course_exclusions") or [])
+        seen_ec = {(int(e.get("teacher_id") or 0), e.get("course_id"), e.get("course_name")) for e in excl_c}
+        for e in (payload.get("exclude_course_assignments") or []):
+            etid = int(e.get("teacher_id") or 0)
+            if etid <= 0:
+                continue
+            item = {"teacher_id": etid}
+            if e.get("course_id") not in (None, ""):
+                item["course_id"] = int(e["course_id"])
+            if e.get("course_name"):
+                item["course_name"] = str(e["course_name"])
+            k = (etid, item.get("course_id"), item.get("course_name"))
+            if k not in seen_ec:
+                seen_ec.add(k)
+                excl_c.append(item)
+        if excl_c:
+            patched["teacher_course_exclusions"] = excl_c
+
+        synced_patched, reassigned, unassigned = _sync_reassigned_courses(patched)
+        res = solve_cpsat(synced_patched, scenario=scenario, time_limit_sec=float(payload.get("time_limit_sec", 10.0)), original_schedule=orig)
         res["original_schedule"] = orig
         res["original_validation"] = validate_schedule(instance, orig, scenario=scenario)
-        res["patched_instance"] = patched
+        res["patched_instance"] = synced_patched
+        if reassigned:
+            res["reassigned_teachers"] = reassigned
+        if unassigned:
+            res["unassigned_courses"] = unassigned
         return res
 
     if action == "benchmark":

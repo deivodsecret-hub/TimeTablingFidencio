@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { storage } from '../utils/storage';
+import { storage, getCourseTeacherIds, pickTeacherForCourseGroup } from '../utils/storage';
 import { TIME_SLOTS } from '../utils/initialData';
 import { Play, Loader, Download, FileSpreadsheet, FileText, Table2, Network, CalendarDays } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -29,7 +29,7 @@ const Schedule = () => {
         setTeachers(initialTeachers);
 
         try {
-            const { virtualRooms, expandedCourses } = generateVirtualGroups(initialStudents, initialCourses);
+            const { virtualRooms, expandedCourses } = generateVirtualGroups(initialStudents, initialCourses, initialTeachers);
             setRooms(virtualRooms);
             setCourses(expandedCourses);
         } catch {
@@ -38,8 +38,12 @@ const Schedule = () => {
         }
 
         const savedSchedule = storage.getSchedule();
+        const savedCourses = storage.getScheduleCourses();
         if (savedSchedule) {
             setSchedule(savedSchedule);
+            if (Array.isArray(savedCourses) && savedCourses.length > 0) {
+                setCourses(savedCourses);
+            }
         }
     }, []);
 
@@ -49,22 +53,27 @@ const Schedule = () => {
         }
     }, [rooms, selectedRoom]);
 
-    const generateVirtualGroups = (studentsByQuarter, allCourses) => {
+    const generateVirtualGroups = (studentsByQuarter, allCourses, allTeachers = []) => {
         const virtualRooms = [];
         const expandedCourses = [];
+        const assignedLoad = {};
         const GROUP_CAPACITY = 35;
 
-        for (let q = 1; q <= 10; q++) {
+        for (let q = 0; q <= 10; q++) {
             const studentCount = studentsByQuarter[q] || 0;
             if (studentCount === 0) continue;
 
             const numGroups = Math.ceil(studentCount / GROUP_CAPACITY);
-            const quarterCourses = allCourses.filter(c => parseInt(c.cuatrimestre) === q);
+            const quarterCourses = allCourses.filter(
+                c => parseInt(c.cuatrimestre, 10) === q && (parseInt(c.weekly_sessions || c.duration || 1, 10) <= 15)
+            );
 
             for (let i = 0; i < numGroups; i++) {
                 const groupIndex = i + 1;
-                const groupId = (q * 100) + groupIndex;
-                const groupName = `${q}-${groupIndex}`;
+                const groupId = q === 0 ? (90 + groupIndex) : ((q * 100) + groupIndex);
+                const groupName = q === 0
+                    ? (numGroups === 1 ? 'Inmersión' : `Inm-${groupIndex}`)
+                    : `${q}-${groupIndex}`;
 
                 virtualRooms.push({
                     id: groupId,
@@ -74,8 +83,15 @@ const Schedule = () => {
                 });
 
                 quarterCourses.forEach(course => {
+                    const chosenTeacher = pickTeacherForCourseGroup(course, i, allTeachers, assignedLoad);
+                    const sessions = parseInt(course.weekly_sessions || course.duration || 1, 10);
+                    if (chosenTeacher) {
+                        assignedLoad[chosenTeacher] = (assignedLoad[chosenTeacher] || 0) + sessions;
+                    }
                     expandedCourses.push({
                         ...course,
+                        teacher_id: chosenTeacher,
+                        teacher_ids: getCourseTeacherIds(course, allTeachers),
                         group_id: groupId,
                         id: course.id * 1000 + groupId
                     });
@@ -93,8 +109,9 @@ const Schedule = () => {
         try {
             const studentsByQuarter = storage.getStudents();
             const allCourses = storage.getCourses();
+            const allTeachers = storage.getTeachers();
 
-            const { virtualRooms, expandedCourses } = generateVirtualGroups(studentsByQuarter, allCourses);
+            const { virtualRooms, expandedCourses } = generateVirtualGroups(studentsByQuarter, allCourses, allTeachers);
 
             if (virtualRooms.length === 0) {
                 throw new Error("No hay alumnos registrados. Ve a la sección 'Datos' y registra alumnos en 'Alumnos'.");
@@ -119,11 +136,17 @@ const Schedule = () => {
                 throw new Error(result.error || 'El servidor no devolvió un horario válido.');
             }
 
+            const resolvedCourses = Array.isArray(result.courses) && result.courses.length > 0
+                ? result.courses
+                : expandedCourses;
+
             storage.setSchedule(result.schedule);
             storage.setScheduleRooms(virtualRooms);
+            storage.setScheduleCourses(resolvedCourses);
             setSchedule(result.schedule);
             setRooms(virtualRooms);
-            setCourses(expandedCourses);
+            setCourses(resolvedCourses);
+            setTeachers(allTeachers);
             setSelectedRoom(virtualRooms[0].id);
         } catch (err) {
             console.error(err);

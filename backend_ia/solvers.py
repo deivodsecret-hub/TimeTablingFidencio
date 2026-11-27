@@ -1,4 +1,5 @@
 import math
+import os
 import random
 import statistics
 import time
@@ -13,6 +14,7 @@ from validator import (
     TEACHABLE_SLOTS,
     HOUR_TO_POS,
     SCENARIO_WEIGHTS,
+    english_bridge_positions,
     normalize_instance,
     preference_forbidden_slots,
     room_assignment_problem,
@@ -147,17 +149,21 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
                 model.Add(sum(variables) <= limit)
 
     # --- Soft Objectives ---
+    # Scale real validator penalties by REAL_SCALE so cosmetic tie-breakers (7AM packing / horizontal bands)
+    # NEVER trade off real student/teacher gaps, load balance, or preferences.
+    REAL_SCALE = 100
+    eng_bridges = english_bridge_positions(inst)
     obj_terms = []
     if relaxed_avail:
         for v in avail_penalties:
-            obj_terms.append(10000 * v)
+            obj_terms.append(1_000_000 * v)
         for sl in missing_slacks:
-            obj_terms.append(20000 * sl)
+            obj_terms.append(2_000_000 * sl)
 
     n_pos = len(TEACHABLE_HOURS)  # 14
 
-    def _add_linear_gaps(prefix, active_map):
-        """Pure linear boolean gap count: sum_p max(0, started[p] + remaining[p] - 1 - a[p])."""
+    def _add_linear_gaps(prefix, active_map, bridge_positions=()):
+        """Pure linear boolean gap count: sum_p max(0, started[p] + remaining[p] - 1 - a[p]), skipping English bridges."""
         if len(active_map) < 2:
             return []
         min_p, max_p = min(active_map.keys()), max(active_map.keys())
@@ -183,6 +189,8 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
 
         gaps = []
         for p in range(min_p + 1, max_p):
+            if p in bridge_positions:
+                continue
             a_p = active_map.get(p)
             g = model.NewBoolVar(f"{prefix}_g_{p}")
             if a_p is not None:
@@ -192,7 +200,7 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
             gaps.append(g)
         return gaps
 
-    # Soft 1 & 3: Student gaps, excessive daily load, and early-start (07:00) priority for morning groups
+    # Soft 1 & 3: Student gaps, excessive daily load, and gentle early-start tie-breaker for morning groups
     room_shift_by_gid = {r.get("group_id", r["id"]): r.get("shift", "matutino") for r in inst.get("rooms", [])}
     for gid, clist in courses_by_group.items():
         is_morning_group = room_shift_by_gid.get(gid, "matutino") != "vespertino"
@@ -205,7 +213,7 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
                     a = model.NewBoolVar(f"ga_{gid}_{d}_{p_idx}")
                     model.Add(a == sum(v))
                     active_map[p_idx] = a
-                    # Gentle tie-breaker so morning groups pack from 07:00 AM without spilling to afternoon
+                    # Tiny tie-breaker so morning groups pack from 07:00 AM without fighting real gaps
                     if is_morning_group and p_idx > 0:
                         obj_terms.append(p_idx * a)
             if not active_map:
@@ -216,10 +224,11 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
 
             exc = model.NewIntVar(0, n_pos, f"gexc_{gid}_{d}")
             model.Add(exc >= cnt - 6)
-            obj_terms.append(weights["excessive_days"] * exc)
+            obj_terms.append(REAL_SCALE * weights["excessive_days"] * exc)
 
-            for g_var in _add_linear_gaps(f"gg_{gid}_{d}", active_map):
-                obj_terms.append(weights["student_gaps"] * g_var)
+            day_bridges = eng_bridges.get((gid, d), ())
+            for g_var in _add_linear_gaps(f"gg_{gid}_{d}", active_map, bridge_positions=day_bridges):
+                obj_terms.append(REAL_SCALE * weights["student_gaps"] * g_var)
 
     # Soft 2, 3, 5: Teacher gaps, excessive days, and daily load balance
     for tid, clist in courses_by_teacher.items():
@@ -242,10 +251,10 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
 
             exc = model.NewIntVar(0, n_pos, f"texc_{tid}_{d}")
             model.Add(exc >= cnt - 6)
-            obj_terms.append(weights["excessive_days"] * exc)
+            obj_terms.append(REAL_SCALE * weights["excessive_days"] * exc)
 
             for g_var in _add_linear_gaps(f"tg_{tid}_{d}", active_map):
-                obj_terms.append(weights["teacher_gaps"] * g_var)
+                obj_terms.append(REAL_SCALE * weights["teacher_gaps"] * g_var)
 
         if len(day_cnts) > 1:
             max_dc = model.NewIntVar(0, n_pos, f"tmaxd_{tid}")
@@ -254,9 +263,9 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
             model.AddMinEquality(min_dc, day_cnts)
             bal = model.NewIntVar(0, n_pos, f"tbal_{tid}")
             model.Add(bal >= max_dc - min_dc - 2)
-            obj_terms.append(weights["teacher_balance"] * bal)
+            obj_terms.append(REAL_SCALE * weights["teacher_balance"] * bal)
 
-    # Soft 4: Weekly spread per course (max ceil(ws/5) per day) + Horizontal Band Consistency (same hour across Mon-Fri like UPV Excel!)
+    # Soft 4: Weekly spread per course (max ceil(ws/5) per day) + gentle horizontal band tie-breaker
     for c in courses:
         cid = c["id"]
         max_d = math.ceil(c["weekly_sessions"] / 5.0)
@@ -265,8 +274,8 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
             if len(v) > max_d:
                 ov = model.NewIntVar(0, len(v), f"sp_{cid}_{d}")
                 model.Add(ov >= sum(v) - max_d)
-                obj_terms.append(weights["spread_penalty"] * ov)
-        # Encourage keeping a course at the SAME daily hour across the week (horizontal bands like UPV Excel!)
+                obj_terms.append(REAL_SCALE * weights["spread_penalty"] * ov)
+        # Gentle tie-breaker to align a course at the same hour across Mon-Fri without adding real gaps
         if c["weekly_sessions"] >= 2:
             for h in TEACHABLE_HOURS:
                 h_vars = [x[(cid, d * SLOTS_PER_DAY + h)] for d in range(NUM_DAYS) if (cid, d * SLOTS_PER_DAY + h) in x]
@@ -274,7 +283,7 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
                     uh = model.NewBoolVar(f"ch_{cid}_{h}")
                     for hv in h_vars:
                         model.Add(uh >= hv)
-                    obj_terms.append(4 * uh)
+                    obj_terms.append(2 * uh)
 
     # Soft 6: Teacher preferences (from R5 LLM)
     for idx, pref in enumerate(inst.get("preferences", [])):
@@ -295,22 +304,21 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
             if viol_flags:
                 pv = model.NewBoolVar(f"pv_{idx}")
                 model.AddMaxEquality(pv, viol_flags)
-                obj_terms.append(weights["preferences_violated"] * pv)
+                obj_terms.append(REAL_SCALE * weights["preferences_violated"] * pv)
         else:
             bad_slots = preference_forbidden_slots(pref)
             bad_vars = [x[(c["id"], s)] for c in clist for s in bad_slots if (c["id"], s) in x]
             if bad_vars:
                 pv = model.NewBoolVar(f"pv_{idx}")
                 model.AddMaxEquality(pv, bad_vars)
-                obj_terms.append(weights["preferences_violated"] * pv)
+                obj_terms.append(REAL_SCALE * weights["preferences_violated"] * pv)
 
     # Stability Objective (I4 Rescheduling: freeze untouched sessions!)
     if original_schedule:
         orig_pairs = {(int(it["course_id"]), int(it["start_slot"])) for it in original_schedule}
         for (cid, s) in orig_pairs:
             if (cid, s) in x:
-                # Penalty 50 for every original session NOT kept at its exact slot
-                obj_terms.append(50 * (1 - x[(cid, s)]))
+                obj_terms.append(50 * REAL_SCALE * (1 - x[(cid, s)]))
 
     if obj_terms:
         model.Minimize(sum(obj_terms))
@@ -321,11 +329,10 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
         domains_set_hint = {k: set(v) for k, v in domains.items()}
         rng_hint = random.Random(7)
         hint_assign = _construct_mrv(sessions_hint, domains, rng_hint, jitter=0.2)
-        hint_assign = _repair_conflicts(hint_assign, sessions_hint, domains, domains_set_hint, rng_hint, max_steps=80)
-        # Quick 1-pass greedy compaction for the hint
+        hint_assign = _repair_conflicts(hint_assign, sessions_hint, domains, domains_set_hint, rng_hint, max_steps=160)
         pref_map_hint = _extract_pref_map(inst)
-        _, _, cur_hc = _fast_score(hint_assign, sessions_hint, domains_set_hint, pref_map_hint, weights)
-        for _ in range(min(120, len(sessions_hint) * 2)):
+        _, _, cur_hc = _fast_score(hint_assign, sessions_hint, domains_set_hint, pref_map_hint, weights, eng_bridges=eng_bridges)
+        for _ in range(min(240, len(sessions_hint) * 2)):
             idx = rng_hint.randrange(len(sessions_hint))
             dom_c = domains[sessions_hint[idx]["course_id"]]
             if not dom_c:
@@ -335,7 +342,7 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
                 if ns == old_s:
                     continue
                 hint_assign[idx] = ns
-                _, _, nc = _fast_score(hint_assign, sessions_hint, domains_set_hint, pref_map_hint, weights)
+                _, _, nc = _fast_score(hint_assign, sessions_hint, domains_set_hint, pref_map_hint, weights, eng_bridges=eng_bridges)
                 if nc < cur_hc:
                     cur_hc = nc
                     break
@@ -346,7 +353,7 @@ def _build_and_solve_cpsat(inst, scenario="C", time_limit_sec=6.0, original_sche
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit_sec)
-    solver.parameters.num_search_workers = 4
+    solver.parameters.num_search_workers = min(8, os.cpu_count() or 4)
     status = solver.Solve(model)
     status_name = solver.StatusName(status)
 
@@ -412,7 +419,7 @@ def _build_session_list(inst, room_map):
     return sessions
 
 
-def _fast_score(assign, sessions, domains_set, pref_bad_by_teacher, weights, orig_slot_map=None):
+def _fast_score(assign, sessions, domains_set, pref_bad_by_teacher, weights, orig_slot_map=None, eng_bridges=None):
     """Fast objective matching validator.py: returns (hard_total, soft_penalty, total_cost)."""
     t_used = defaultdict(int)
     g_used = defaultdict(int)
@@ -459,7 +466,9 @@ def _fast_score(assign, sessions, domains_set, pref_bad_by_teacher, weights, ori
     for (gid, d), pos_list in g_day_pos.items():
         u = set(pos_list)
         if len(u) > 1:
-            student_gaps += (max(u) - min(u) + 1) - len(u)
+            min_p, max_p = min(u), max(u)
+            day_bridges = {p for p in (eng_bridges or {}).get((gid, d), ()) if min_p < p < max_p}
+            student_gaps += (max_p - min_p + 1) - len(u | day_bridges)
         if len(pos_list) > 6:
             excessive += len(pos_list) - 6
 

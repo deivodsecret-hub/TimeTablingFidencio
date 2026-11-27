@@ -1,27 +1,30 @@
-# Sistema de Generación Automática de Horarios Universitarios
-## Utilizando Algoritmos de Grafos y Backtracking
+# Proyecto final: Sistema inteligente para la generación de horarios de ITIID
+## Optimización con OR-Tools CP-SAT, Metaheurísticas, Asistente LLM y Backtracking
 
 **Universidad Politécnica de Victoria**  
-**Ingeniería en Tecnologías de la Información**
+**Ingeniería en Tecnologías de la Información e Innovación Digital (ITIID)**
 
 ---
 
-## Autores
-- Fernando Guadalupe Flores Flores
-- Rodrigo Damián Álvarez Aguilar
-- Israel Eliseo Cisneros Salas
-- Jose Guadalupe Cornejo Alva
+## Integrantes del Equipo
+- Axel Librado Aguilera Alonso
+- Germán David Zavala Castro
+- Vasti Norely Ruiz Báez
+- Yahir Alejandro Roque Martínez
+- José Guadalupe Cornejo Alva
+- David Alejandro Ibarra Castañeda
+- Jesús Alberto Tovar Ramírez
 
-**Asesor:** Dr. Said Polanco Martagón  
-*Profesor de Estructuras de Datos*
+**Dr. encargado:** Dr. José Fidencio López Luna  
+*Fundamentos de Inteligencia Artificial*
 
-**Fecha:** Diciembre 2025
+**Fecha:** Noviembre 2026
 
 ---
 
 ## Agradecimientos
 
-**Reconocimiento al Asesor:** Agradecemos profundamente al Dr. Said Polanco Martagón por su guía experta, paciencia infinita y conocimientos compartidos durante el desarrollo de este proyecto. Sus enseñanzas sobre estructuras de datos, algoritmos de grafos, análisis de complejidad y programación en C++ fueron fundamentales para materializar esta solución técnica.
+**Reconocimiento Docente:** Agradecemos al Dr. José Fidencio López Luna por su dirección académica, retroalimentación técnica y guía metodológica durante el desarrollo de este proyecto final en la asignatura de Fundamentos de Inteligencia Artificial.
 
 **Apoyo de la UPV:** A la Universidad Politécnica de Victoria por brindarnos la formación académica de excelencia, las herramientas tecnológicas necesarias, el acceso a recursos computacionales y el entorno propicio para enfrentar desafíos técnicos complejos que nos preparan para el ejercicio profesional.
 
@@ -470,7 +473,7 @@ El sistema implementa una arquitectura de tres capas que separa responsabilidade
 ```json
 {
   "id": 1,
-  "name": "Fernando Flores",
+  "name": "Arturo Mascorro",
   "availability": [true, true, true, ...]
 }
 ```
@@ -801,7 +804,7 @@ Las podas y heurísticas reducen drásticamente el espacio explorado. En la prá
 #### Registro de Profesores
 
 **Caso de prueba:**
-- Entrada: Profesor "Fernando Flores" disponible lunes-viernes 7:00-14:00
+- Entrada: Profesor "Arturo Mascorro" disponible lunes-viernes 7:00-14:00
 - Esperado: 35 horarios disponibles (7 horas/día × 5 días)
 - Resultado: ✓ PASÓ
 

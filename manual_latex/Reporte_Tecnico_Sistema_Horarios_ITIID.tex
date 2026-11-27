@@ -1,0 +1,201 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla,es-nodecimaldot,es-noquoting,es-noshorthands]{babel}
+\usepackage[top=2.3cm,bottom=2.2cm,left=2.2cm,right=2.2cm]{geometry}
+\usepackage{graphicx,booktabs,tabularx,array,xcolor,tikz,enumitem,fancyhdr,hyperref,amsmath,amssymb}
+
+\definecolor{upvmorado}{HTML}{5B146B}
+\definecolor{upvazul}{HTML}{17384D}
+\definecolor{upvverde}{HTML}{008D79}
+\definecolor{upvnaranja}{HTML}{E67817}
+\definecolor{grisclaro}{HTML}{F8FAFC}
+\definecolor{grisborde}{HTML}{CBD5E1}
+\definecolor{gristexto}{HTML}{475569}
+
+\hypersetup{
+    colorlinks=true,
+    urlcolor=upvverde,
+    linkcolor=upvazul,
+    pdftitle={Reporte Técnico - Proyecto final: Sistema inteligente para la generación de horarios de ITIID},
+    pdfauthor={Equipo ITIID - Universidad Politécnica de Victoria}
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\emergencystretch=1.8em
+\setlist[itemize]{itemsep=2pt,topsep=3pt,leftmargin=*}
+\setlist[enumerate]{itemsep=3pt,topsep=3pt,leftmargin=*}
+\renewcommand{\arraystretch}{1.22}
+\addto\captionsspanish{\renewcommand{\contentsname}{Índice General}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{%
+    \raisebox{-0.18\height}{\includegraphics[height=0.52cm]{img/logo_upv_morado.png}}\hspace{0.22cm}%
+    {\footnotesize\bfseries\color{upvmorado} UPV $\cdot$ ITIID}\hspace{0.15cm}{\footnotesize\color{gristexto}| Reporte Técnico}%
+}
+\fancyhead[R]{\footnotesize\color{gristexto} Fundamentos de Inteligencia Artificial}
+\fancyfoot[L]{\footnotesize\color{gristexto} Dr. José Fidencio López Luna}
+\fancyfoot[R]{\footnotesize\bfseries\color{upvazul} Página \thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.3pt}
+\setlength{\headheight}{20pt}
+
+\newcommand{\seccionUPV}[1]{%
+    \section{\texorpdfstring{\textcolor{upvmorado}{#1}}{#1}}%
+    \vspace{-0.22cm}{\color{upvnaranja}\rule{\textwidth}{1.1pt}}\vspace{0.12cm}%
+}
+\newcommand{\subseccionUPV}[1]{%
+    \subsection{\texorpdfstring{\textcolor{upvazul}{#1}}{#1}}%
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{0.1cm}
+    \includegraphics[height=2.35cm]{img/logos_upv_bis.png}\\[0.35cm]
+    {\color{upvmorado}\rule{\textwidth}{2pt}}\\[-0.22cm]
+    {\color{upvnaranja}\rule{\textwidth}{0.9pt}}\\[0.35cm]
+
+    {\Large\bfseries\color{upvazul} UNIVERSIDAD POLITÉCNICA DE VICTORIA\par}
+    \vspace{0.12cm}
+    {\normalsize\bfseries\color{gristexto} Ingeniería en Tecnologías de la Información e Innovación Digital (ITIID)\par}
+    \vspace{0.35cm}
+
+    \includegraphics[height=2.65cm]{img/logo_upv_morado.png}\\[0.35cm]
+
+    {\LARGE\bfseries\color{upvmorado} Proyecto final: Sistema inteligente para la\\generación de horarios de ITIID\par}
+    \vspace{0.28cm}
+    {\large\bfseries\color{upvazul} Reporte Técnico de Arquitectura, Optimización Combinatoria\\e Integración de Inteligencia Artificial\par}
+    \vspace{0.45cm}
+
+    \begin{tikzpicture}
+        \node[
+            fill=grisclaro,
+            draw=grisborde,
+            rounded corners=4pt,
+            inner xsep=14pt,
+            inner ysep=9pt,
+            text width=0.88\textwidth
+        ] {%
+            \begin{tabularx}{\linewidth}{@{}lX@{}}
+                \textbf{\color{upvazul}Asignatura:} & Fundamentos de Inteligencia Artificial (7.\textsuperscript{o} Cuatrimestre) \\
+                \textbf{\color{upvazul}Dr. encargado:} & \textbf{Dr. José Fidencio López Luna} \\
+                \textbf{\color{upvazul}Institución:} & Universidad Politécnica de Victoria (UPV) --- Modelo BIS
+            \end{tabularx}
+        };
+    \end{tikzpicture}
+
+    \vspace{0.45cm}
+    {\normalsize\bfseries\color{upvmorado} INTEGRANTES DEL EQUIPO\par}
+    \vspace{0.18cm}
+
+    \begin{tikzpicture}
+        \node[
+            fill=white,
+            draw=upvmorado!35,
+            rounded corners=4pt,
+            inner xsep=16pt,
+            inner ysep=10pt,
+            text width=0.82\textwidth,
+            align=center
+        ] {%
+            \begin{tabular}{@{}c@{}}
+                Axel Librado Aguilera Alonso \\
+                Germán David Zavala Castro \\
+                Vasti Norely Ruiz Báez \\
+                Yahir Alejandro Roque Martínez \\
+                José Guadalupe Cornejo Alva \\
+                David Alejandro Ibarra Castañeda \\
+                Jesús Alberto Tovar Ramírez
+            \end{tabular}
+        };
+    \end{tikzpicture}
+
+    \vfill
+    {\color{upvmorado}\rule{0.55\textwidth}{0.6pt}}\\[0.15cm]
+    {\small\color{gristexto} Ciudad Victoria, Tamaulipas, México $\cdot$ Noviembre de 2026\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\newpage
+\pagenumbering{arabic}
+
+\seccionUPV{Resumen Ejecutivo}
+
+El presente reporte técnico documenta el diseño matemático, algorítmico y de ingeniería de software del \textbf{Sistema inteligente para la generación de horarios de ITIID} de la Universidad Politécnica de Victoria. El problema de calendarización universitaria (\textit{University Course Timetabling Problem}, UCTP) pertenece a la clase NP-completo y exige satisfacer simultáneamente restricciones duras institucionales (no traslape de docentes, grupos ni aulas; respeto estricto de disponibilidad, recesos y recursos compartidos; cobertura completa de sesiones semanales) mientras se minimizan penalizaciones blandas contrapuestas (horas muertas estudiantiles, huecos docentes, jornadas mayores a 6 horas y preferencias individuales).
+
+La solución implementa una arquitectura híbrida gobernada por una regla estricta: \textbf{las asignaciones horarias son calculadas únicamente por motores formales y auditadas por un Validador Común determinista}, mientras que el \textbf{Modelo Grande de Lenguaje (LLM)} opera exclusivamente en tareas de traducción semántica con supervisión humana (\textit{human-in-the-loop}), explicación de conflictos y traducción de cambios imprevistos.
+
+\seccionUPV{Formulación Matemática y Validador Común}
+
+\subseccionUPV{Dominio Temporal y Entidades}
+La semana académica consta de $D = 5$ días (lunes a viernes) con $S = 17$ franjas diarias de \texttt{07:00} a \texttt{20:45}, de las cuales tres corresponden a recesos fijos ($B = \{4, 8, 13\}$) y 14 son bloques lectivos ($H_{\text{lect}} = \{0,\dots,16\} \setminus B$), totalizando 70 franjas asignables por aula o grupo. El dimensionamiento automático de grupos por cuatrimestre $q$ responde a:
+\[
+G_q = \left\lceil \frac{\text{Alumnos}_q}{35} \right\rceil
+\]
+
+\subseccionUPV{Variables de Decisión y Restricciones Duras}
+Sea $x_{c,s} \in \{0,1\}$ la variable binaria que vale $1$ si el curso $c \in C$ (con sesiones requeridas $w_c$, grupo $g_c$, docente $t_c$ y aula compatible $r_c$) se imparte en el bloque lectivo $s \in \mathcal{D}_c$:
+\begin{align}
+\sum_{s \in \mathcal{D}_c} x_{c,s} &= w_c && \forall c \in C \quad \text{(Cobertura semanal exacta)} \\
+\sum_{c : g_c = g} x_{c,s} &\leq 1 && \forall g, \forall s \quad \text{(Sin choque de grupo)} \\
+\sum_{c : t_c = t} x_{c,s} &\leq 1 && \forall t, \forall s \quad \text{(Sin choque de docente)} \\
+\sum_{c : r_c = r} x_{c,s} &\leq 1 && \forall r, \forall s \quad \text{(Sin choque de aula compartida)}
+\end{align}
+
+\subseccionUPV{Función Objetivo Multicriterio y Escenarios A, B y C}
+Para medir de manera lineal exacta las horas muertas diarias sin productos no lineales en CP-SAT, se introducen variables auxiliares booleanas monótonas $\text{st}_{e,d,p}$ (\textit{jornada iniciada}) y $\text{rm}_{e,d,p}$ (\textit{clases restantes}) sobre la secuencia compacta $p \in \{0,\dots,13\}$ de cada entidad $e$ (grupo o docente), de modo que existe hueco en $p$ si y solo si:
+\[
+\text{gap}_{e,d,p} \geq \text{st}_{e,d,p} + \text{rm}_{e,d,p} - 1 - a_{e,d,p}
+\]
+La función de penalización blanda pondera seis métricas bajo tres escenarios transparentes elegibles por coordinación académica:
+\begin{center}
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Criterio Blando} & \textbf{Esc. A (Alumnos)} & \textbf{Esc. B (Docentes)} & \textbf{Esc. C (Equilibrio)} \\
+\midrule
+Horas muertas de alumnos & 10 & 2 & 6 \\
+Jornadas excesivas ($>6$ h/día) & 8 & 3 & 5 \\
+Concentración diaria de materia & 6 & 3 & 5 \\
+Huecos entre clases docentes & 2 & 10 & 6 \\
+Desbalance semanal docente & 2 & 8 & 5 \\
+Preferencias docentes no cumplidas & 3 & 10 & 6 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\seccionUPV{Motores de Resolución e Inteligencia Artificial}
+
+\begin{enumerate}
+    \item \textbf{R2 --- Google OR-Tools CP-SAT (\texttt{backend\_ia/solvers.py}):} Motor principal de programación por restricciones con satisfacción booleana, arranque cálido (\texttt{AddHint}), diagnóstico relajado automático ante instancias sobre-restringidas y soporte de \textbf{reprogramación estable (I4)} penalizando desviaciones respecto a un horario publicado ($x_{c,s} \neq x^{\text{orig}}_{c,s}$).
+    \item \textbf{R3 --- Algoritmo Genético Multicorrida:} Representación directa por vector de sesiones, selección por torneo, cruce uniforme por curso, mutación guiada hacia dominios factibles y operador de reparación de colisiones, evaluado en 10 corridas independientes con reporte de media y desviación estándar.
+    \item \textbf{R4 --- Búsqueda Local (MRV + Hill Climbing):} Construcción inicial priorizando cursos de menor dominio disponible (\textit{Minimum Remaining Values}) seguida de ascenso de colinas con múltiples reinicios aleatorios.
+    \item \textbf{Motor Clásico C++ (\texttt{backend/solver.cpp}):} Búsqueda exacta por \textit{backtracking} con exploración horizontal por franja horaria y poda temprana de capacidad, disponibilidad y tope diario $\lceil w_c / 5 \rceil$.
+    \item \textbf{R5 y R6 --- Servicio LLM y Privacidad (\texttt{backend\_ia/llm\_service.py}):} Integración con \textbf{Ollama Local} (\texttt{qwen2.5:3b}), APIs compatibles y respaldo determinista offline. Incluye anonimizador reversible (\texttt{Docente\_01}, \texttt{Aula\_01}), evaluación F1 contra dataset anotado (P2), explicador ejecutivo (P4) y auditoría empírica de generación directa con LLM (P1).
+\end{enumerate}
+
+\seccionUPV{Resultados Experimentales y Conclusiones}
+
+En la comparativa estandarizada sobre la instancia cerrada \textbf{I2 (ITIID 7.\textsuperscript{o} Cuatrimestre, 7 materias, 35 sesiones semanales, Escenario C)}:
+\begin{itemize}
+    \item \textbf{OR-Tools CP-SAT (R2)} alcanza el óptimo global con \textbf{0 violaciones duras}, \textbf{0 horas muertas estudiantiles}, \textbf{0 huecos docentes}, \textbf{100\% de preferencias cumplidas} y penalización blanda mínima de \textbf{25 puntos}, superando ampliamente al horario manual de referencia (penalización 73, con 5 horas muertas).
+    \item \textbf{Búsqueda Local (R4)} y \textbf{Algoritmo Genético (R3)} obtienen horarios 100\% factibles (\textbf{0 violaciones duras}) en menos de $2.3$ segundos con penalizaciones de 36 y 37 puntos respectivamente.
+    \item En el escenario de imprevisto docente \textbf{I4} (bloqueo completo de miércoles), la reprogramación con CP-SAT repara la factibilidad moviendo únicamente \textbf{4 de 35 sesiones (88.6\% de estabilidad)}.
+    \item La \textbf{Prueba P1} confirma empíricamente que un LLM directo sin motor de restricciones incurre entre 15 y 21 violaciones duras (choques y asignaciones en receso), validando la decisión arquitectónica de combinar optimización exacta con lenguaje natural supervisado.
+\end{itemize}
+
+\seccionUPV{Referencias Bibliográficas}
+\begin{enumerate}
+    \item Burke, E. K., \& Petrovic, S. (2002). Recent research directions in automated timetabling. \textit{European Journal of Operational Research}, 140(2), 266--280.
+    \item Perron, L., \& Didier, F. (2024). \textit{CP-SAT Solver --- Google OR-Tools Documentation}. Google Optimization Tools.
+    \item Bonutti, A., De Cesco, F., Di Gaspero, L., \& Schaerf, A. (2012). Benchmarking curriculum-based course timetabling: formulations, data formats, instances, validation, visualization, and results. \textit{Annals of Operations Research}, 194(1), 59--70.
+    \item Cormen, T. H., Leiserson, C. E., Rivest, R. L., \& Stein, C. (2009). \textit{Introduction to Algorithms} (3rd ed.). MIT Press.
+    \item Garey, M. R., \& Johnson, D. S. (1979). \textit{Computers and Intractability: A Guide to the Theory of NP-Completeness}. W. H. Freeman.
+\end{enumerate}
+
+\end{document}
